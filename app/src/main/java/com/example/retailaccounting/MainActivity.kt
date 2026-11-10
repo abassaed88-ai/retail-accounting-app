@@ -17,7 +17,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private fun pinkForPdf()=Color.rgb(190,65,125)\n\nprivate data class InvoiceLine(val name:String,val qty:Double,val price:Double)
+private fun pinkForPdf()=Color.rgb(190,65,125)
+
+private data class InvoiceLine(val name:String,val qty:Double,val price:Double)
 
 private class StoreDb(private val appContext: android.content.Context) : SQLiteOpenHelper(appContext, "good_girl.db", null, 1) {
  override fun onCreate(db:SQLiteDatabase) {
@@ -83,18 +85,18 @@ private class StoreDb(private val appContext: android.content.Context) : SQLiteO
 
   val currencyName=if(currency=="USD")"دولار" else "ليرة سورية"
   val text=buildString {
-   append("Good Girl\\n")
-   append("فاتورة مبيعات\\n")
-   append("رقم الفاتورة: $number\\n")
-   append("التاريخ: ${now()}\\n")
-   append("--------------------------------\\n")
+   append("Good Girl\n")
+   append("فاتورة مبيعات\n")
+   append("رقم الفاتورة: $number\n")
+   append("التاريخ: ${now()}\n")
+   append("--------------------------------\n")
    lines.forEachIndexed { index,line ->
-    append("${index+1}. ${line.name}\\n")
-    append("الكمية: ${String.format(Locale.US,"%.2f",line.qty)}    سعر الوحدة: ${String.format(Locale.US,"%.2f",line.price)}\\n")
-    append("الإجمالي: ${String.format(Locale.US,"%.2f",line.qty*line.price)} $currencyName\\n\\n")
+    append("${index+1}. ${line.name}\n")
+    append("الكمية: ${String.format(Locale.US,"%.2f",line.qty)}    سعر الوحدة: ${String.format(Locale.US,"%.2f",line.price)}\n")
+    append("الإجمالي: ${String.format(Locale.US,"%.2f",line.qty*line.price)} $currencyName\n\n")
    }
-   append("--------------------------------\\n")
-   append("الإجمالي النهائي: ${String.format(Locale.US,"%.2f",total)} $currencyName\\n")
+   append("--------------------------------\n")
+   append("الإجمالي النهائي: ${String.format(Locale.US,"%.2f",total)} $currencyName\n")
    append("سعر الصرف المعتمد: ${String.format(Locale.US,"%.2f",fx)} ليرة سورية لكل دولار")
   }
   val textPaint=android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
@@ -161,7 +163,7 @@ class MainActivity:Activity(){
   val q=field("الكمية");val price=field("سعر الوحدة");b.addView(q);b.addView(price)
   val currency=Spinner(this);currency.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,listOf("ليرة سورية","دولار"));b.addView(currency)
   val list=TextView(this).apply{setTextColor(ink);textSize=14f};b.addView(list)
-  b.addView(btn("إضافة بند للفاتورة"){try{val line=InvoiceLine(items[sp.selectedItemPosition][1],q.text.toString().toDouble(),price.text.toString().toDouble());require(line.qty>0&&line.price>=0);lines.add(line);list.text=lines.joinToString("\\n"){"${it.name} × ${it.qty} — ${it.qty*it.price}"};q.text.clear();price.text.clear()}catch(e:Exception){Toast.makeText(this,"أدخل كمية وسعراً صحيحين",Toast.LENGTH_SHORT).show()}})
+  b.addView(btn("إضافة بند للفاتورة"){try{val line=InvoiceLine(items[sp.selectedItemPosition][1],q.text.toString().toDouble(),price.text.toString().toDouble());require(line.qty>0&&line.price>=0);lines.add(line);list.text=lines.joinToString("\n"){"${it.name} × ${it.qty} — ${it.qty*it.price}"};q.text.clear();price.text.clear()}catch(e:Exception){Toast.makeText(this,"أدخل كمية وسعراً صحيحين",Toast.LENGTH_SHORT).show()}})
   b.addView(btn("حفظ الفاتورة وتصدير PDF للمشاركة"){try{val result=db.createInvoice(lines,if(currency.selectedItemPosition==0)"SYP" else "USD",db.fx());val uri=FileProvider.getUriForFile(this,packageName+".provider",result.second);val send=Intent(Intent.ACTION_SEND).apply{type="application/pdf";putExtra(Intent.EXTRA_SUBJECT,"فاتورة Good Girl ${result.first}");putExtra(Intent.EXTRA_STREAM,uri);clipData=android.content.ClipData.newUri(contentResolver,"فاتورة",uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)};startActivity(Intent.createChooser(send,"مشاركة الفاتورة"));lines.clear();list.text=""}catch(e:Exception){Toast.makeText(this,e.message?:"تعذر إنشاء الفاتورة",Toast.LENGTH_LONG).show()}})
  }
  private fun reports(){val b=base("التقارير");listOf("اليوم","الأسبوع","الشهر").forEach{p->val x=db.summary(p);b.addView(label("$p — المبيعات: ${fmt(x.first)} ل.س — الربح: ${fmt(x.second)} ل.س"))};b.addView(label("آخر المبيعات",18f));b.addView(label(db.salesText(),13f))}
