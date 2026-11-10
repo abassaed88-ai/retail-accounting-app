@@ -53,14 +53,15 @@ private class StoreDb(ctx: android.content.Context) : SQLiteOpenHelper(ctx, "goo
    val name=c.getString(0);val available=c.getDouble(1);val cost=c.getDouble(2);c.close()
    require(qty<=available){"الكمية المطلوبة أكبر من المتوفر بالمخزون"}
    d.execSQL("UPDATE products SET qty=qty-? WHERE id=?",arrayOf(qty,id))
-   val v=android.content.ContentValues().apply {put("product_id",id);put("product_name",name);put("qty",qty);put("unit_price",unitPrice);put("unit_cost",cost);put("total",qty*unitPrice);put("profit",qty*(unitPrice-cost));put("currency",currency);put("fx",fx);put("created_at",now())}
+   val costInSaleCurrency=if(currency=="USD") cost/fx else cost
+   val v=android.content.ContentValues().apply {put("product_id",id);put("product_name",name);put("qty",qty);put("unit_price",unitPrice);put("unit_cost",cost);put("total",qty*unitPrice);put("profit",qty*(unitPrice-costInSaleCurrency));put("currency",currency);put("fx",fx);put("created_at",now())}
    d.insertOrThrow("sales",null,v);move(d,id,"بيع",-qty,"خصم تلقائي عند البيع");d.setTransactionSuccessful()
   } finally {d.endTransaction()}
  }
  fun fx():Double {val c=readableDatabase.rawQuery("SELECT value FROM settings WHERE key='fx'",null);val v=if(c.moveToFirst())c.getString(0).toDoubleOrNull()?:15000.0 else 15000.0;c.close();return v}
  fun setFx(v:Double){require(v>0);val x=android.content.ContentValues().apply{put("key","fx");put("value",v.toString())};writableDatabase.insertWithOnConflict("settings",null,x,SQLiteDatabase.CONFLICT_REPLACE)}
  fun products():List<Array<String>> {val a=mutableListOf<Array<String>>();val c=readableDatabase.rawQuery("SELECT id,name,category,qty,cost,price FROM products ORDER BY name",null);while(c.moveToNext())a.add(arrayOf(c.getString(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5)));c.close();return a}
- fun summary(period:String):Pair<Double,Double>{val where=when(period){"اليوم"->"date(created_at)=date('now','localtime')";"الأسبوع"->"date(created_at)>=date('now','-6 days','localtime')";else->"strftime('%Y-%m',created_at)=strftime('%Y-%m','now','localtime')"};val c=readableDatabase.rawQuery("SELECT COALESCE(SUM(total),0),COALESCE(SUM(profit),0) FROM sales WHERE $where",null);c.moveToFirst();val r=Pair(c.getDouble(0),c.getDouble(1));c.close();return r}
+ fun summary(period:String):Pair<Double,Double>{val where=when(period){"اليوم"->"date(created_at)=date('now','localtime')";"الأسبوع"->"date(created_at)>=date('now','-6 days','localtime')";else->"strftime('%Y-%m',created_at)=strftime('%Y-%m','now','localtime')"};val c=readableDatabase.rawQuery("SELECT COALESCE(SUM(CASE WHEN currency='USD' THEN total*fx ELSE total END),0),COALESCE(SUM(CASE WHEN currency='USD' THEN profit*fx ELSE profit END),0) FROM sales WHERE $where",null);c.moveToFirst();val r=Pair(c.getDouble(0),c.getDouble(1));c.close();return r}
  fun salesText():String{val c=readableDatabase.rawQuery("SELECT product_name,qty,total,profit,currency,created_at FROM sales ORDER BY id DESC LIMIT 100",null);val b=StringBuilder();while(c.moveToNext())b.append(c.getString(5)).append(" • ").append(c.getString(0)).append(" × ").append(c.getString(1)).append(" • ").append(c.getString(2)).append(" ").append(c.getString(4)).append(" • الربح ").append(c.getString(3)).append('\n');c.close();return if(b.isEmpty())"لا توجد مبيعات مسجلة بعد" else b.toString()}
 }
 
