@@ -17,7 +17,9 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private data class InvoiceLine(val name:String,val qty:Double,val price:Double)\n\nprivate class StoreDb(private val appContext: android.content.Context) : SQLiteOpenHelper(appContext, "good_girl.db", null, 1) {
+private data class InvoiceLine(val name:String,val qty:Double,val price:Double)
+
+private class StoreDb(private val appContext: android.content.Context) : SQLiteOpenHelper(appContext, "good_girl.db", null, 1) {
  override fun onCreate(db:SQLiteDatabase) {
   db.execSQL("CREATE TABLE products(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL COLLATE NOCASE UNIQUE,category TEXT NOT NULL DEFAULT '',qty REAL NOT NULL DEFAULT 0,cost REAL NOT NULL DEFAULT 0,price REAL NOT NULL DEFAULT 0)")
   db.execSQL("CREATE TABLE sales(id INTEGER PRIMARY KEY AUTOINCREMENT,product_id INTEGER NOT NULL,product_name TEXT NOT NULL,qty REAL NOT NULL,unit_price REAL NOT NULL,unit_cost REAL NOT NULL,total REAL NOT NULL,profit REAL NOT NULL,currency TEXT NOT NULL,fx REAL NOT NULL,created_at TEXT NOT NULL)")
