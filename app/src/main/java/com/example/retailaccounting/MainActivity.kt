@@ -1,6 +1,11 @@
 package com.example.retailaccounting
 
 import android.app.Activity
+import android.content.Intent
+import android.graphics.pdf.PdfDocument
+import androidx.core.content.FileProvider
+import java.io.File
+import java.io.FileOutputStream
 import android.os.Bundle
 import android.graphics.Color
 import android.view.Gravity
@@ -12,7 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private class StoreDb(ctx: android.content.Context) : SQLiteOpenHelper(ctx, "good_girl.db", null, 1) {
+private data class InvoiceLine(val name:String,val qty:Double,val price:Double)\n\nprivate class StoreDb(private val appContext: android.content.Context) : SQLiteOpenHelper(appContext, "good_girl.db", null, 1) {
  override fun onCreate(db:SQLiteDatabase) {
   db.execSQL("CREATE TABLE products(id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT NOT NULL COLLATE NOCASE UNIQUE,category TEXT NOT NULL DEFAULT '',qty REAL NOT NULL DEFAULT 0,cost REAL NOT NULL DEFAULT 0,price REAL NOT NULL DEFAULT 0)")
   db.execSQL("CREATE TABLE sales(id INTEGER PRIMARY KEY AUTOINCREMENT,product_id INTEGER NOT NULL,product_name TEXT NOT NULL,qty REAL NOT NULL,unit_price REAL NOT NULL,unit_cost REAL NOT NULL,total REAL NOT NULL,profit REAL NOT NULL,currency TEXT NOT NULL,fx REAL NOT NULL,created_at TEXT NOT NULL)")
@@ -61,6 +66,26 @@ private class StoreDb(ctx: android.content.Context) : SQLiteOpenHelper(ctx, "goo
  fun fx():Double {val c=readableDatabase.rawQuery("SELECT value FROM settings WHERE key='fx'",null);val v=if(c.moveToFirst())c.getString(0).toDoubleOrNull()?:15000.0 else 15000.0;c.close();return v}
  fun setFx(v:Double){require(v>0);val x=android.content.ContentValues().apply{put("key","fx");put("value",v.toString())};writableDatabase.insertWithOnConflict("settings",null,x,SQLiteDatabase.CONFLICT_REPLACE)}
  fun products():List<Array<String>> {val a=mutableListOf<Array<String>>();val c=readableDatabase.rawQuery("SELECT id,name,category,qty,cost,price FROM products ORDER BY name",null);while(c.moveToNext())a.add(arrayOf(c.getString(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5)));c.close();return a}
+ fun createInvoice(lines:List<InvoiceLine>,currency:String,fx:Double):Pair<String,File>{
+  require(lines.isNotEmpty() && fx>0)
+  val total=lines.sumOf{it.qty*it.price}
+  val number="GG-"+SimpleDateFormat("yyMMdd-HHmmss",Locale.US).format(Date())
+  val d=writableDatabase;d.beginTransaction()
+  try{
+   val h=android.content.ContentValues().apply{put("number",number);put("created_at",now());put("total",total);put("currency",currency);put("fx",fx)}
+   val id=d.insertOrThrow("invoices",null,h)
+   lines.forEach{line->val v=android.content.ContentValues().apply{put("invoice_id",id);put("product_name",line.name);put("qty",line.qty);put("unit_price",line.price)};d.insertOrThrow("invoice_lines",null,v)}
+   d.setTransactionSuccessful()
+  }finally{d.endTransaction()}
+  val pdf=PdfDocument();val page=pdf.startPage(PdfDocument.PageInfo.Builder(595,842,1).create());val canvas=page.canvas;val paint=android.graphics.Paint().apply{textSize=18f;color=android.graphics.Color.BLACK}
+  var y=55f;canvas.drawText("Good Girl - Invoice",380f,y,paint);y+=35f;paint.textSize=13f;canvas.drawText("Invoice: $number",40f,y,paint);y+=28f;canvas.drawText("Date: ${now()}",40f,y,paint);y+=32f
+  lines.forEach{line->canvas.drawText("${line.name}   x ${line.qty}   @ ${line.price}   = ${line.qty*line.price}",40f,y,paint);y+=24f}
+  y+=25f;paint.textSize=17f;canvas.drawText("Total: ${String.format(Locale.US,"%.2f",total)} $currency",40f,y,paint)
+  pdf.finishPage(page)
+  val file=File(appContext.cacheDir,"$number.pdf");FileOutputStream(file).use{pdf.writeTo(it)};pdf.close()
+  return Pair(number,file)
+ }
+ private fun cacheDirForInvoice()=ctxCache
  fun summary(period:String):Pair<Double,Double>{val where=when(period){"اليوم"->"date(created_at)=date('now','localtime')";"الأسبوع"->"date(created_at)>=date('now','-6 days','localtime')";else->"strftime('%Y-%m',created_at)=strftime('%Y-%m','now','localtime')"};val c=readableDatabase.rawQuery("SELECT COALESCE(SUM(CASE WHEN currency='USD' THEN total*fx ELSE total END),0),COALESCE(SUM(CASE WHEN currency='USD' THEN profit*fx ELSE profit END),0) FROM sales WHERE $where",null);c.moveToFirst();val r=Pair(c.getDouble(0),c.getDouble(1));c.close();return r}
  fun salesText():String{val c=readableDatabase.rawQuery("SELECT product_name,qty,total,profit,currency,created_at FROM sales ORDER BY id DESC LIMIT 100",null);val b=StringBuilder();while(c.moveToNext())b.append(c.getString(5)).append(" • ").append(c.getString(0)).append(" × ").append(c.getString(1)).append(" • ").append(c.getString(2)).append(" ").append(c.getString(4)).append(" • الربح ").append(c.getString(3)).append('\n');c.close();return if(b.isEmpty())"لا توجد مبيعات مسجلة بعد" else b.toString()}
 }
@@ -83,7 +108,16 @@ class MainActivity:Activity(){
  private fun home(){val b=base("Good Girl • إدارة المتجر");b.addView(label("أهلاً بكِ في Good Girl",22f));listOf("اليوم","الأسبوع","الشهر").forEach{p->val x=db.summary(p);b.addView(label("$p | المبيعات: ${fmt(x.first)} ل.س | الربح: ${fmt(x.second)} ل.س"))};b.addView(label("عدد الأصناف: ${db.products().size}",18f));b.addView(btn("إضافة مادة جديدة"){products()});b.addView(btn("تسجيل عملية مبيع"){sale()})}
  private fun products(){val b=base("المواد والمخزون • قسم موحد");val n=field("اسم المادة");val cat=field("التصنيف");val q=field("الكمية المدخلة");val cost=field("سعر التكلفة");val price=field("سعر البيع");listOf(n,cat,q,cost,price).forEach{b.addView(it)};b.addView(btn("حفظ المادة / إدخال كمية جديدة"){try{db.addStock(n.text.toString(),cat.text.toString(),q.text.toString().toDouble(),cost.text.toString().toDouble(),price.text.toString().toDouble());Toast.makeText(this,"تم تحديث المادة والمخزون",Toast.LENGTH_LONG).show();products()}catch(e:Exception){Toast.makeText(this,e.message?:"تحقق من البيانات",Toast.LENGTH_LONG).show()}});b.addView(label("الأصناف الحالية",19f));db.products().forEach{p->b.addView(label("${p[1]} | المتوفر: ${p[3]} | التكلفة: ${p[4]} | البيع: ${p[5]}",14f))}}
  private fun sale(){val b=base("تسجيل مبيع");val items=db.products();if(items.isEmpty()){b.addView(label("أضف مادة أولاً من قسم المواد والمخزون"));return};val sp=Spinner(this);sp.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,items.map{"${it[1]} (المتوفر ${it[3]})"});b.addView(sp);val q=field("الكمية المباعة");val p=field("سعر بيع الوحدة");b.addView(q);b.addView(p);val cur=Spinner(this);cur.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,listOf("ليرة سورية","دولار"));b.addView(cur);b.addView(label("سعر الصرف: ${fmt(db.fx())} ل.س لكل دولار"));b.addView(btn("تأكيد المبيع وخصم المخزون"){try{db.sell(items[sp.selectedItemPosition][0].toLong(),q.text.toString().toDouble(),p.text.toString().toDouble(),if(cur.selectedItemPosition==0)"SYP" else "USD",db.fx());Toast.makeText(this,"تم تسجيل المبيع وتحديث المخزون",Toast.LENGTH_LONG).show();sale()}catch(e:Exception){Toast.makeText(this,e.message?:"تحقق من البيانات",Toast.LENGTH_LONG).show()}})}
- private fun invoices(){val b=base("الفواتير");b.addView(label("إنشاء الفواتير وتصديرها ومشاركتها قيد الاستكمال."))}
+ private fun invoices(){
+  val b=base("الفواتير • إنشاء وتصدير")
+  val items=db.products();if(items.isEmpty()){b.addView(label("أضف المواد أولاً حتى تتمكن من إعداد فاتورة."));return}
+  val lines=mutableListOf<InvoiceLine>();val sp=Spinner(this);sp.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,items.map{it[1]});b.addView(sp)
+  val q=field("الكمية");val price=field("سعر الوحدة");b.addView(q);b.addView(price)
+  val currency=Spinner(this);currency.adapter=ArrayAdapter(this,android.R.layout.simple_spinner_dropdown_item,listOf("ليرة سورية","دولار"));b.addView(currency)
+  val list=TextView(this).apply{setTextColor(ink);textSize=14f};b.addView(list)
+  b.addView(btn("إضافة بند للفاتورة"){try{val line=InvoiceLine(items[sp.selectedItemPosition][1],q.text.toString().toDouble(),price.text.toString().toDouble());require(line.qty>0&&line.price>=0);lines.add(line);list.text=lines.joinToString("\\n"){"${it.name} × ${it.qty} — ${it.qty*it.price}"};q.text.clear();price.text.clear()}catch(e:Exception){Toast.makeText(this,"أدخل كمية وسعراً صحيحين",Toast.LENGTH_SHORT).show()}})
+  b.addView(btn("حفظ الفاتورة وتصدير PDF للمشاركة"){try{val result=db.createInvoice(lines,if(currency.selectedItemPosition==0)"SYP" else "USD",db.fx());val uri=FileProvider.getUriForFile(this,packageName+".provider",result.second);val send=Intent(Intent.ACTION_SEND).apply{type="application/pdf";putExtra(Intent.EXTRA_SUBJECT,"فاتورة Good Girl ${result.first}");putExtra(Intent.EXTRA_STREAM,uri);clipData=android.content.ClipData.newUri(contentResolver,"فاتورة",uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)};startActivity(Intent.createChooser(send,"مشاركة الفاتورة"));lines.clear();list.text=""}catch(e:Exception){Toast.makeText(this,e.message?:"تعذر إنشاء الفاتورة",Toast.LENGTH_LONG).show()}})
+ }
  private fun reports(){val b=base("التقارير");listOf("اليوم","الأسبوع","الشهر").forEach{p->val x=db.summary(p);b.addView(label("$p — المبيعات: ${fmt(x.first)} ل.س — الربح: ${fmt(x.second)} ل.س"))};b.addView(label("آخر المبيعات",18f));b.addView(label(db.salesText(),13f))}
  private fun settings(){val b=base("الإعدادات");b.addView(label("سعر صرف الدولار مقابل الليرة السورية"));val r=field("سعر الصرف");r.setText(db.fx().toString());b.addView(r);b.addView(btn("حفظ سعر الصرف"){try{db.setFx(r.text.toString().toDouble());Toast.makeText(this,"تم حفظ سعر الصرف",Toast.LENGTH_SHORT).show()}catch(e:Exception){Toast.makeText(this,"أدخل سعراً صحيحاً",Toast.LENGTH_SHORT).show()}})}
  override fun onDestroy(){db.close();super.onDestroy()}
