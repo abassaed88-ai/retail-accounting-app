@@ -87,7 +87,6 @@ private class StoreDb(private val appContext: android.content.Context) : SQLiteO
   val file=File(appContext.cacheDir,"$number.pdf");FileOutputStream(file).use{pdf.writeTo(it)};pdf.close()
   return Pair(number,file)
  }
- private fun cacheDirForInvoice()=ctxCache
  fun summary(period:String):Pair<Double,Double>{val where=when(period){"اليوم"->"date(created_at)=date('now','localtime')";"الأسبوع"->"date(created_at)>=date('now','-6 days','localtime')";else->"strftime('%Y-%m',created_at)=strftime('%Y-%m','now','localtime')"};val c=readableDatabase.rawQuery("SELECT COALESCE(SUM(CASE WHEN currency='USD' THEN total*fx ELSE total END),0),COALESCE(SUM(CASE WHEN currency='USD' THEN profit*fx ELSE profit END),0) FROM sales WHERE $where",null);c.moveToFirst();val r=Pair(c.getDouble(0),c.getDouble(1));c.close();return r}
  fun salesText():String{val c=readableDatabase.rawQuery("SELECT product_name,qty,total,profit,currency,created_at FROM sales ORDER BY id DESC LIMIT 100",null);val b=StringBuilder();while(c.moveToNext())b.append(c.getString(5)).append(" • ").append(c.getString(0)).append(" × ").append(c.getString(1)).append(" • ").append(c.getString(2)).append(" ").append(c.getString(4)).append(" • الربح ").append(c.getString(3)).append('\n');c.close();return if(b.isEmpty())"لا توجد مبيعات مسجلة بعد" else b.toString()}
 }
