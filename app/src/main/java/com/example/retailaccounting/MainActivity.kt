@@ -17,7 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-private data class InvoiceLine(val name:String,val qty:Double,val price:Double)
+private fun pinkForPdf()=Color.rgb(190,65,125)\n\nprivate data class InvoiceLine(val name:String,val qty:Double,val price:Double)
 
 private class StoreDb(private val appContext: android.content.Context) : SQLiteOpenHelper(appContext, "good_girl.db", null, 1) {
  override fun onCreate(db:SQLiteDatabase) {
@@ -70,6 +70,7 @@ private class StoreDb(private val appContext: android.content.Context) : SQLiteO
  fun products():List<Array<String>> {val a=mutableListOf<Array<String>>();val c=readableDatabase.rawQuery("SELECT id,name,category,qty,cost,price FROM products ORDER BY name",null);while(c.moveToNext())a.add(arrayOf(c.getString(0),c.getString(1),c.getString(2),c.getString(3),c.getString(4),c.getString(5)));c.close();return a}
  fun createInvoice(lines:List<InvoiceLine>,currency:String,fx:Double):Pair<String,File>{
   require(lines.isNotEmpty() && fx>0)
+  lines.forEach { require(it.name.isNotBlank() && it.qty>0 && it.price>=0) }
   val total=lines.sumOf{it.qty*it.price}
   val number="GG-"+SimpleDateFormat("yyMMdd-HHmmss",Locale.US).format(Date())
   val d=writableDatabase;d.beginTransaction()
@@ -79,12 +80,56 @@ private class StoreDb(private val appContext: android.content.Context) : SQLiteO
    lines.forEach{line->val v=android.content.ContentValues().apply{put("invoice_id",id);put("product_name",line.name);put("qty",line.qty);put("unit_price",line.price)};d.insertOrThrow("invoice_lines",null,v)}
    d.setTransactionSuccessful()
   }finally{d.endTransaction()}
-  val pdf=PdfDocument();val page=pdf.startPage(PdfDocument.PageInfo.Builder(595,842,1).create());val canvas=page.canvas;val paint=android.graphics.Paint().apply{textSize=18f;color=android.graphics.Color.BLACK}
-  var y=55f;canvas.drawText("Good Girl - Invoice",380f,y,paint);y+=35f;paint.textSize=13f;canvas.drawText("Invoice: $number",40f,y,paint);y+=28f;canvas.drawText("Date: ${now()}",40f,y,paint);y+=32f
-  lines.forEach{line->canvas.drawText("${line.name}   x ${line.qty}   @ ${line.price}   = ${line.qty*line.price}",40f,y,paint);y+=24f}
-  y+=25f;paint.textSize=17f;canvas.drawText("Total: ${String.format(Locale.US,"%.2f",total)} $currency",40f,y,paint)
-  pdf.finishPage(page)
-  val file=File(appContext.cacheDir,"$number.pdf");FileOutputStream(file).use{pdf.writeTo(it)};pdf.close()
+
+  val currencyName=if(currency=="USD")"دولار" else "ليرة سورية"
+  val text=buildString {
+   append("Good Girl\\n")
+   append("فاتورة مبيعات\\n")
+   append("رقم الفاتورة: $number\\n")
+   append("التاريخ: ${now()}\\n")
+   append("--------------------------------\\n")
+   lines.forEachIndexed { index,line ->
+    append("${index+1}. ${line.name}\\n")
+    append("الكمية: ${String.format(Locale.US,"%.2f",line.qty)}    سعر الوحدة: ${String.format(Locale.US,"%.2f",line.price)}\\n")
+    append("الإجمالي: ${String.format(Locale.US,"%.2f",line.qty*line.price)} $currencyName\\n\\n")
+   }
+   append("--------------------------------\\n")
+   append("الإجمالي النهائي: ${String.format(Locale.US,"%.2f",total)} $currencyName\\n")
+   append("سعر الصرف المعتمد: ${String.format(Locale.US,"%.2f",fx)} ليرة سورية لكل دولار")
+  }
+  val textPaint=android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+   textSize=16f
+   color=Color.BLACK
+   typeface=android.graphics.Typeface.create("sans-serif",android.graphics.Typeface.NORMAL)
+  }
+  val layout=android.text.StaticLayout.Builder.obtain(text,0,text.length,textPaint,515)
+   .setAlignment(android.text.Layout.Alignment.ALIGN_NORMAL)
+   .setTextDirection(android.text.TextDirectionHeuristics.RTL)
+   .setIncludePad(true)
+   .setLineSpacing(6f,1f)
+   .build()
+  val pdf=PdfDocument()
+  val pageContentHeight=730
+  val pageCount=maxOf(1,(layout.height+pageContentHeight-1)/pageContentHeight)
+  for(pageIndex in 0 until pageCount){
+   val page=pdf.startPage(PdfDocument.PageInfo.Builder(595,842,pageIndex+1).create())
+   val canvas=page.canvas
+   val titlePaint=android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+    color=pinkForPdf()
+    textSize=13f
+    textAlign=android.graphics.Paint.Align.CENTER
+   }
+   canvas.drawText("Good Girl",297.5f,35f,titlePaint)
+   canvas.save()
+   canvas.translate(40f,55f-pageIndex*pageContentHeight)
+   canvas.clipRect(0,0,515,pageContentHeight)
+   layout.draw(canvas)
+   canvas.restore()
+   pdf.finishPage(page)
+  }
+  val file=File(appContext.cacheDir,"$number.pdf")
+  FileOutputStream(file).use{pdf.writeTo(it)}
+  pdf.close()
   return Pair(number,file)
  }
  fun summary(period:String):Pair<Double,Double>{val where=when(period){"اليوم"->"date(created_at)=date('now','localtime')";"الأسبوع"->"date(created_at)>=date('now','-6 days','localtime')";else->"strftime('%Y-%m',created_at)=strftime('%Y-%m','now','localtime')"};val c=readableDatabase.rawQuery("SELECT COALESCE(SUM(CASE WHEN currency='USD' THEN total*fx ELSE total END),0),COALESCE(SUM(CASE WHEN currency='USD' THEN profit*fx ELSE profit END),0) FROM sales WHERE $where",null);c.moveToFirst();val r=Pair(c.getDouble(0),c.getDouble(1));c.close();return r}
