@@ -117,6 +117,17 @@ abstract class StoreDao {
         }
         val saleId = insertSale(sale)
         insertSaleItems(items.map { it.copy(saleId = saleId) })
+        items.forEach { item ->
+            insertStockMovement(StockMovement(
+                productId = item.productId,
+                productNameSnapshot = item.productNameSnapshot,
+                movementType = "SALE",
+                quantityDelta = -item.quantityInBaseUnit,
+                unitCostSnapshot = item.unitCostSnapshot,
+                currency = sale.currency,
+                referenceId = saleId
+            ))
+        }
         return saleId
     }
 }
