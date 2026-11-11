@@ -210,7 +210,18 @@ abstract class StoreDao {
         cashMovement: CashMovement? = null
     ): Long {
         require(items.isNotEmpty()) { "لا يمكن حفظ فاتورة فارغة" }
-        require(sale.total.isFinite() && sale.total >= 0.0) { "إجمالي الفاتورة غير صالح" }
+        require(sale.paymentType == "CASH" || sale.paymentType == "DEBT") { "نوع الدفع غير صحيح" }
+        require(sale.total.isFinite() && sale.total >= 0.0 && sale.subtotal.isFinite() && sale.subtotal >= 0.0) { "إجمالي الفاتورة غير صالح" }
+        require(sale.discount.isFinite() && sale.discount >= 0.0) { "الخصم غير صالح" }
+        require(sale.exchangeRateAtSale.isFinite() && sale.exchangeRateAtSale > 0.0) { "سعر الصرف المثبت غير صالح" }
+        val calculatedSubtotal = items.sumOf { it.lineTotal }
+        require(calculatedSubtotal.isFinite() && kotlin.math.abs(calculatedSubtotal - sale.subtotal) < 0.000001) { "مجموع تفاصيل المبيع لا يطابق الإجمالي الفرعي" }
+        require(kotlin.math.abs((sale.subtotal - sale.discount) - sale.total) < 0.000001) { "إجمالي الفاتورة بعد الخصم غير مطابق" }
+        items.forEach { item ->
+            require(item.quantityInBaseUnit.isFinite() && item.quantityInBaseUnit > 0.0) { "كمية الصنف غير صحيحة" }
+            require(item.unitPrice.isFinite() && item.unitPrice >= 0.0 && item.unitCostSnapshot.isFinite() && item.unitCostSnapshot >= 0.0) { "سعر الصنف أو كلفته غير صحيح" }
+            require(item.lineTotal.isFinite() && item.lineTotal >= 0.0) { "إجمالي سطر المبيع غير صالح" }
+        }
         if (sale.paymentType == "DEBT") {
             require(accountMovement != null) { "يجب تسجيل مديونية الزبون مع البيع الآجل" }
             require(accountMovement.partyType == "CUSTOMER" && accountMovement.movementType == "SALE_CREDIT") { "حركة حساب الزبون غير صحيحة" }
