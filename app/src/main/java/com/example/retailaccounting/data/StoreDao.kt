@@ -146,7 +146,8 @@ abstract class StoreDao {
             direction = direction,
             amount = amount,
             currency = currency,
-            reason = if (partyType == "CUSTOMER") "قبض من زبون: ${partyName.trim()}" else "تسديد لمورد: ${partyName.trim()}"
+            reason = if (partyType == "CUSTOMER") "قبض من زبون: ${partyName.trim()}" else "تسديد لمورد: ${partyName.trim()}",
+            referenceId = movementId
         ))
         return movementId
     }
@@ -169,7 +170,7 @@ abstract class StoreDao {
         require(expense.currency == "USD" || expense.currency == "SYP") { "عملة المصروف غير صحيحة" }
         require(movement.direction == "OUT" && movement.amount == expense.amount && movement.currency == expense.currency) { "حركة الصندوق لا تطابق المصروف" }
         val id = insertExpense(expense)
-        insertCashMovement(movement)
+        insertCashMovement(movement.copy(referenceId = id))
         return id
     }
     @Transaction
@@ -217,7 +218,7 @@ abstract class StoreDao {
             ))
         }
         accountMovement?.let { insertAccountMovement(it.copy(referenceId = purchaseId)) }
-        cashMovement?.let { insertCashMovement(it.copy(reason = "شراء نقدي: " + it.reason)) }
+        cashMovement?.let { insertCashMovement(it.copy(reason = "شراء نقدي #${purchaseId}: " + it.reason, referenceId = purchaseId)) }
         return purchaseId
     }
     @Transaction
@@ -272,7 +273,7 @@ abstract class StoreDao {
             ))
         }
         accountMovement?.let { insertAccountMovement(it.copy(referenceId = saleId)) }
-        cashMovement?.let { insertCashMovement(it.copy(reason = "مبيع نقدي #${saleId}: ${it.reason}")) }
+        cashMovement?.let { insertCashMovement(it.copy(reason = "مبيع نقدي #${saleId}: ${it.reason}", referenceId = saleId)) }
         return saleId
     }
 }
