@@ -521,10 +521,30 @@ class MainActivity : AppCompatActivity() {
             try {
                 val movements = dao.observeAccountMovements().first()
                 val balances = com.example.retailaccounting.domain.AccountBalanceCalculator.calculate(movements)
-                val message = if (balances.isEmpty()) "لا توجد حركات حساب مسجلة بعد." else balances.joinToString("\n") {
-                    (if (it.partyType == "CUSTOMER") "زبون: " else "مورد: ") + it.partyName + "\nالرصيد: " + it.balance + " " + it.currency
+                val message = if (balances.isEmpty()) "لا توجد حركات حساب مسجلة بعد." else balances.joinToString("\n\n") {
+                    val customer = it.partyType == "CUSTOMER"
+                    val label = if (customer) "زبون: " else "مورد: "
+                    val status = when {
+                        kotlin.math.abs(it.balance) < 0.000001 -> "الحساب متوازن"
+                        customer && it.balance > 0.0 -> "عليه للمحل"
+                        customer && it.balance < 0.0 -> "لصالح الزبون"
+                        !customer && it.balance > 0.0 -> "للمورد على المحل"
+                        else -> "لصالح المحل"
+                    }
+                    label + it.partyName + "\n" + status + ": " +
+                        kotlin.math.abs(it.balance) + " " + it.currency
                 }
-                AlertDialog.Builder(this@MainActivity).setTitle("أرصدة الزبائن والموردين").setMessage(message).setPositiveButton("إغلاق", null).show()
+                val content = TextView(this@MainActivity).apply {
+                    text = message
+                    textSize = 16f
+                    setPadding(24, 16, 24, 16)
+                    layoutDirection = View.LAYOUT_DIRECTION_RTL
+                }
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("أرصدة الزبائن والموردين")
+                    .setView(ScrollView(this@MainActivity).apply { addView(content) })
+                    .setPositiveButton("إغلاق", null)
+                    .show()
             } catch (error: Exception) { Toast.makeText(this@MainActivity, error.message ?: "تعذر قراءة الأرصدة", Toast.LENGTH_LONG).show() }
         }
     }
