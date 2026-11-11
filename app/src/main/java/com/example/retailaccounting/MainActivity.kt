@@ -117,8 +117,11 @@ class MainActivity : AppCompatActivity() {
                 if (value == null || value <= 0.0) { amount.error = "أدخل مبلغاً أكبر من صفر"; return@setOnClickListener }
                 lifecycleScope.launch {
                     try {
-                        dao.insertExpense(com.example.retailaccounting.data.Expense(title = label, amount = value, currency = currency.selectedItem.toString()))
-                        dao.insertCashMovement(com.example.retailaccounting.data.CashMovement(direction = "OUT", amount = value, currency = currency.selectedItem.toString(), reason = "مصروف: " + label))
+                        val money = currency.selectedItem.toString()
+                        dao.recordExpenseAndCash(
+                            com.example.retailaccounting.data.Expense(title = label, amount = value, currency = money),
+                            com.example.retailaccounting.data.CashMovement(direction = "OUT", amount = value, currency = money, reason = "مصروف: " + label)
+                        )
                         Toast.makeText(this@MainActivity, "تم تسجيل المصروف وحركة الصندوق", Toast.LENGTH_LONG).show()
                         dialog.dismiss()
                     } catch (error: Exception) { Toast.makeText(this@MainActivity, error.message ?: "تعذر حفظ المصروف", Toast.LENGTH_LONG).show() }
