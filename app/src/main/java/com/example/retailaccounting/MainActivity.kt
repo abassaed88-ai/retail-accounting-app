@@ -50,6 +50,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { showPurchaseDialog() }
         }
         val saleButton = Button(this).apply { text = "＋ تسجيل فاتورة مبيع"; setOnClickListener { showSaleDialog() } }
+        val expenseButton = Button(this).apply { text = "－ تسجيل مصروف"; setOnClickListener { showExpenseDialog() } }
         val section = TextView(this).apply {
             text = "الأصناف والمخزون"
             textSize = 20f
@@ -64,6 +65,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(addButton)
         page.addView(purchaseButton)
         page.addView(saleButton)
+        page.addView(expenseButton)
         page.addView(section)
         page.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
@@ -101,6 +103,30 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+    private fun showExpenseDialog() {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        val title = EditText(this).apply { hint = "بيان المصروف" }
+        val amount = EditText(this).apply { hint = "قيمة المصروف"; inputType = 8194 }
+        val currency = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("USD", "SYP")) }
+        box.addView(title); box.addView(amount); box.addView(currency)
+        AlertDialog.Builder(this).setTitle("تسجيل مصروف").setView(box).setNegativeButton("إلغاء", null).setPositiveButton("حفظ", null).create().also { dialog ->
+            dialog.setOnShowListener { dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val label = title.text.toString().trim()
+                val value = amount.text.toString().toDoubleOrNull()
+                if (label.isBlank()) { title.error = "اكتب بيان المصروف"; return@setOnClickListener }
+                if (value == null || value <= 0.0) { amount.error = "أدخل مبلغاً أكبر من صفر"; return@setOnClickListener }
+                lifecycleScope.launch {
+                    try {
+                        dao.insertExpense(com.example.retailaccounting.data.Expense(title = label, amount = value, currency = currency.selectedItem.toString()))
+                        dao.insertCashMovement(com.example.retailaccounting.data.CashMovement(direction = "OUT", amount = value, currency = currency.selectedItem.toString(), reason = "مصروف: " + label))
+                        Toast.makeText(this@MainActivity, "تم تسجيل المصروف وحركة الصندوق", Toast.LENGTH_LONG).show()
+                        dialog.dismiss()
+                    } catch (error: Exception) { Toast.makeText(this@MainActivity, error.message ?: "تعذر حفظ المصروف", Toast.LENGTH_LONG).show() }
+                }
+            } }
+            dialog.show()
+        }
+    }
     private fun showSaleDialog() {
         lifecycleScope.launch {
             val products = dao.observeProducts().first()
