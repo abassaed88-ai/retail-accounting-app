@@ -52,6 +52,8 @@ class MainActivity : AppCompatActivity() {
         val saleButton = Button(this).apply { text = "＋ تسجيل فاتورة مبيع"; setOnClickListener { showSaleDialog() } }
         val expenseButton = Button(this).apply { text = "－ تسجيل مصروف"; setOnClickListener { showExpenseDialog() } }
         val reportButton = Button(this).apply { text = "▤ تقرير اليوم"; setOnClickListener { showDailyReport() } }
+        val paymentButton = Button(this).apply { text = "↔ تسجيل دفعة زبون / مورد"; setOnClickListener { showPartyPaymentDialog() } }
+        val accountsButton = Button(this).apply { text = "▤ أرصدة الزبائن والموردين"; setOnClickListener { showAccountBalances() } }
         val section = TextView(this).apply {
             text = "الأصناف والمخزون"
             textSize = 20f
@@ -68,6 +70,8 @@ class MainActivity : AppCompatActivity() {
         page.addView(saleButton)
         page.addView(expenseButton)
         page.addView(reportButton)
+        page.addView(paymentButton)
+        page.addView(accountsButton)
         page.addView(section)
         page.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
@@ -104,6 +108,53 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+
+    private fun showPartyPaymentDialog() {
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+        val partyType = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("زبون", "مورد")) }
+        val name = EditText(this).apply { hint = "اسم الزبون أو المورد" }
+        val amount = EditText(this).apply { hint = "قيمة الدفعة"; inputType = 8194 }
+        val currency = Spinner(this).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("USD", "SYP")) }
+        box.addView(partyType); box.addView(name); box.addView(amount); box.addView(currency)
+        val dialog = AlertDialog.Builder(this).setTitle("تسجيل دفعة").setView(box).setNegativeButton("إلغاء", null).setPositiveButton("حفظ", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val party = name.text.toString().trim()
+                val value = amount.text.toString().toDoubleOrNull()
+                if (party.isBlank()) { name.error = "الاسم مطلوب"; return@setOnClickListener }
+                if (value == null || !value.isFinite() || value <= 0.0) { amount.error = "أدخل مبلغاً صحيحاً"; return@setOnClickListener }
+                lifecycleScope.launch {
+                    try {
+                        val isCustomer = partyType.selectedItemPosition == 0
+                        dao.recordPartyPayment(
+                            partyType = if (isCustomer) "CUSTOMER" else "SUPPLIER",
+                            partyName = party,
+                            amount = value,
+                            currency = currency.selectedItem.toString(),
+                            direction = if (isCustomer) "IN" else "OUT"
+                        )
+                        Toast.makeText(this@MainActivity, "تم تسجيل الدفعة وتحديث الحساب والصندوق", Toast.LENGTH_LONG).show()
+                        dialog.dismiss()
+                    } catch (error: Exception) { Toast.makeText(this@MainActivity, error.message ?: "تعذر تسجيل الدفعة", Toast.LENGTH_LONG).show() }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun showAccountBalances() {
+        lifecycleScope.launch {
+            try {
+                val movements = dao.observeAccountMovements().first()
+                val balances = com.example.retailaccounting.domain.AccountBalanceCalculator.calculate(movements)
+                val message = if (balances.isEmpty()) "لا توجد حركات حساب مسجلة بعد." else balances.joinToString("\n") {
+                    (if (it.partyType == "CUSTOMER") "زبون: " else "مورد: ") + it.partyName + "\nالرصيد: " + it.balance + " " + it.currency
+                }
+                AlertDialog.Builder(this@MainActivity).setTitle("أرصدة الزبائن والموردين").setMessage(message).setPositiveButton("إغلاق", null).show()
+            } catch (error: Exception) { Toast.makeText(this@MainActivity, error.message ?: "تعذر قراءة الأرصدة", Toast.LENGTH_LONG).show() }
+        }
+    }
 
     private fun showDailyReport() {
         lifecycleScope.launch {
