@@ -31,6 +31,12 @@ abstract class StoreDao {
     @Query("SELECT * FROM exchange_rates WHERE id = 1")
     abstract suspend fun getExchangeRate(): ExchangeRate?
 
+    @Transaction
+    open suspend fun updateExchangeRate(value: Double) {
+        require(value.isFinite() && value > 0.0) { "سعر الصرف يجب أن يكون أكبر من صفر" }
+        saveExchangeRate(ExchangeRate(usdToSyp = value))
+    }
+
     @Insert
     abstract suspend fun insertSale(sale: Sale): Long
 
