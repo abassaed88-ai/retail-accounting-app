@@ -51,5 +51,14 @@ abstract class AppDatabase : RoomDatabase() {
                     .build()
                     .also { INSTANCE = it }
             }
+
+        @Synchronized
+        fun closeInstanceForBackup() {
+            INSTANCE?.let { database ->
+                database.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").close()
+                database.close()
+            }
+            INSTANCE = null
+        }
     }
 }
