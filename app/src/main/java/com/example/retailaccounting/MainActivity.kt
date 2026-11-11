@@ -7,6 +7,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.lifecycleScope
 import com.example.retailaccounting.data.AppDatabase
 import com.example.retailaccounting.data.Product
@@ -15,6 +16,43 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
+    private val backupLauncher = registerForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) {
+            lifecycleScope.launch {
+                try {
+                    com.example.retailaccounting.data.DatabaseBackup.export(this@MainActivity, uri)
+                    Toast.makeText(this@MainActivity, "تم إنشاء النسخة الاحتياطية بنجاح", Toast.LENGTH_LONG).show()
+                    recreate()
+                } catch (error: Exception) {
+                    Toast.makeText(this@MainActivity, error.message ?: "فشل إنشاء النسخة الاحتياطية", Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+    private val restoreLauncher = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            AlertDialog.Builder(this)
+                .setTitle("تأكيد استعادة النسخة")
+                .setMessage("سيتم استبدال بيانات التطبيق الحالية بالبيانات الموجودة في الملف المحدد. أنشئ نسخة احتياطية حالية قبل المتابعة.")
+                .setNegativeButton("إلغاء", null)
+                .setPositiveButton("استعادة") { _, _ ->
+                    lifecycleScope.launch {
+                        try {
+                            com.example.retailaccounting.data.DatabaseBackup.restore(this@MainActivity, uri)
+                            Toast.makeText(this@MainActivity, "تمت الاستعادة. سيعاد تشغيل التطبيق.", Toast.LENGTH_LONG).show()
+                            val intent = packageManager.getLaunchIntentForPackage(packageName)
+                            intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            finish()
+                        } catch (error: Exception) {
+                            Toast.makeText(this@MainActivity, error.message ?: "فشلت استعادة النسخة", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+                .show()
+        }
+    }
+
     private lateinit var list: LinearLayout
     private lateinit var dao: com.example.retailaccounting.data.StoreDao
 
@@ -57,6 +95,8 @@ class MainActivity : AppCompatActivity() {
         val exchangeButton = Button(this).apply { text = "سعر صرف الدولار"; setOnClickListener { showExchangeRateDialog() } }
         val cashButton = Button(this).apply { text = "▣ حركة الصندوق والأرصدة"; setOnClickListener { showCashSummary() } }
         val invoicesButton = Button(this).apply { text = "▤ سجل فواتير المبيع والشراء"; setOnClickListener { showInvoiceHistory() } }
+        val backupButton = Button(this).apply { text = "⬇ إنشاء نسخة احتياطية"; setOnClickListener { backupLauncher.launch("GoodGirl-Backup.db") } }
+        val restoreButton = Button(this).apply { text = "⬆ استعادة نسخة احتياطية"; setOnClickListener { restoreLauncher.launch(arrayOf("application/octet-stream", "application/x-sqlite3", "*/*")) } }
         val section = TextView(this).apply {
             text = "الأصناف والمخزون"
             textSize = 20f
@@ -78,6 +118,8 @@ class MainActivity : AppCompatActivity() {
         page.addView(exchangeButton)
         page.addView(cashButton)
         page.addView(invoicesButton)
+        page.addView(backupButton)
+        page.addView(restoreButton)
         page.addView(section)
         page.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
