@@ -89,7 +89,8 @@ data class CashMovement(
     val amount: Double,
     val currency: String,
     val reason: String,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val referenceId: Long? = null
 )
 
 @Entity(tableName = "purchases")
