@@ -76,6 +76,13 @@ abstract class StoreDao {
     abstract suspend fun insertCashMovement(movement: CashMovement): Long
 
     @Transaction
+    open suspend fun recordExpenseAndCash(expense: Expense, movement: CashMovement): Long {
+        require(expense.amount > 0.0) { "قيمة المصروف يجب أن تكون أكبر من صفر" }
+        val id = insertExpense(expense)
+        insertCashMovement(movement)
+        return id
+    }
+    @Transaction
     open suspend fun savePurchaseAndAddStock(purchase: Purchase, items: List<PurchaseItem>): Long {
         require(items.isNotEmpty()) { "لا يمكن حفظ فاتورة شراء فارغة" }
         items.forEach { item ->
