@@ -54,6 +54,7 @@ class MainActivity : AppCompatActivity() {
         val reportButton = Button(this).apply { text = "▤ تقرير اليوم"; setOnClickListener { showDailyReport() } }
         val paymentButton = Button(this).apply { text = "↔ تسجيل دفعة زبون / مورد"; setOnClickListener { showPartyPaymentDialog() } }
         val accountsButton = Button(this).apply { text = "▤ أرصدة الزبائن والموردين"; setOnClickListener { showAccountBalances() } }
+        val exchangeButton = Button(this).apply { text = "سعر صرف الدولار"; setOnClickListener { showExchangeRateDialog() } }
         val section = TextView(this).apply {
             text = "الأصناف والمخزون"
             textSize = 20f
@@ -72,6 +73,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(reportButton)
         page.addView(paymentButton)
         page.addView(accountsButton)
+        page.addView(exchangeButton)
         page.addView(section)
         page.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
@@ -109,6 +111,43 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+
+    private fun showExchangeRateDialog() {
+        val input = EditText(this).apply {
+            hint = "كم ليرة سورية تساوي دولاراً واحداً؟"
+            inputType = 8194
+        }
+        lifecycleScope.launch {
+            val current = dao.getExchangeRate()
+            if (current != null) input.setText(current.usdToSyp.toString())
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("تحديد سعر الصرف USD / SYP")
+                .setView(input)
+                .setNegativeButton("إلغاء", null)
+                .setPositiveButton("حفظ", null)
+                .create().also { dialog ->
+                    dialog.setOnShowListener {
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                            val value = input.text.toString().toDoubleOrNull()
+                            if (value == null || !value.isFinite() || value <= 0.0) {
+                                input.error = "أدخل سعر صرف صحيحاً"
+                                return@setOnClickListener
+                            }
+                            lifecycleScope.launch {
+                                try {
+                                    dao.updateExchangeRate(value)
+                                    Toast.makeText(this@MainActivity, "تم حفظ سعر الصرف", Toast.LENGTH_LONG).show()
+                                    dialog.dismiss()
+                                } catch (error: Exception) {
+                                    Toast.makeText(this@MainActivity, error.message ?: "تعذر حفظ سعر الصرف", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    }
+                    dialog.show()
+                }
+        }
+    }
 
     private fun showPartyPaymentDialog() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
