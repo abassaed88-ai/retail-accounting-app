@@ -89,3 +89,40 @@ data class CashMovement(
     val reason: String,
     val createdAt: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "purchases")
+data class Purchase(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val createdAt: Long = System.currentTimeMillis(),
+    val currency: String,
+    val exchangeRateAtPurchase: Double,
+    val total: Double,
+    val supplierName: String? = null,
+    val invoiceNumber: String = "",
+    val note: String = ""
+)
+
+@Entity(tableName = "purchase_items")
+data class PurchaseItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val purchaseId: Long,
+    val productId: Long,
+    val productNameSnapshot: String,
+    val quantityInBaseUnit: Double,
+    val unitCostSnapshot: Double,
+    val lineTotal: Double
+)
+
+@Entity(tableName = "stock_movements")
+data class StockMovement(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val productId: Long,
+    val productNameSnapshot: String,
+    val movementType: String,
+    val quantityDelta: Double,
+    val unitCostSnapshot: Double,
+    val currency: String,
+    val referenceId: Long? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val note: String = ""
+)
