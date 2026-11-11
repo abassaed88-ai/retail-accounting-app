@@ -142,6 +142,9 @@ abstract class StoreDao {
     @Insert
     abstract suspend fun insertCashMovement(movement: CashMovement): Long
 
+    @Query("SELECT * FROM cash_movements ORDER BY createdAt DESC")
+    abstract fun observeCashMovements(): Flow<List<CashMovement>>
+
     @Transaction
     open suspend fun recordExpenseAndCash(expense: Expense, movement: CashMovement): Long {
         require(expense.amount.isFinite() && expense.amount > 0.0) { "قيمة المصروف يجب أن تكون أكبر من صفر" }
