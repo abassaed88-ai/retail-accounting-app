@@ -90,6 +90,38 @@ abstract class StoreDao {
         return insertAccountMovement(movement)
     }
 
+    @Transaction
+    open suspend fun recordPartyPayment(
+        partyType: String,
+        partyName: String,
+        amount: Double,
+        currency: String,
+        direction: String,
+        note: String = ""
+    ): Long {
+        require(partyType == "CUSTOMER" || partyType == "SUPPLIER") { "نوع الحساب غير صحيح" }
+        require(partyName.isNotBlank()) { "اسم الطرف مطلوب" }
+        require(amount.isFinite() && amount > 0.0) { "قيمة الدفعة يجب أن تكون أكبر من صفر" }
+        require(currency == "USD" || currency == "SYP") { "العملة غير صحيحة" }
+        val expectedDirection = if (partyType == "CUSTOMER") "IN" else "OUT"
+        require(direction == expectedDirection) { "اتجاه حركة الصندوق لا يطابق نوع الحساب" }
+        val movementId = insertAccountMovement(AccountMovement(
+            partyType = partyType,
+            partyName = partyName.trim(),
+            movementType = "PAYMENT",
+            amount = -amount,
+            currency = currency,
+            note = note
+        ))
+        insertCashMovement(CashMovement(
+            direction = direction,
+            amount = amount,
+            currency = currency,
+            reason = if (partyType == "CUSTOMER") "قبض من زبون: ${partyName.trim()}" else "تسديد لمورد: ${partyName.trim()}"
+        ))
+        return movementId
+    }
+
     @Insert
     abstract suspend fun insertExpense(expense: Expense): Long
 
