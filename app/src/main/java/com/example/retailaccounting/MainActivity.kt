@@ -56,6 +56,7 @@ class MainActivity : AppCompatActivity() {
         val accountsButton = Button(this).apply { text = "▤ أرصدة الزبائن والموردين"; setOnClickListener { showAccountBalances() } }
         val exchangeButton = Button(this).apply { text = "سعر صرف الدولار"; setOnClickListener { showExchangeRateDialog() } }
         val cashButton = Button(this).apply { text = "▣ حركة الصندوق والأرصدة"; setOnClickListener { showCashSummary() } }
+        val invoicesButton = Button(this).apply { text = "▤ سجل فواتير المبيع والشراء"; setOnClickListener { showInvoiceHistory() } }
         val section = TextView(this).apply {
             text = "الأصناف والمخزون"
             textSize = 20f
@@ -76,6 +77,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(accountsButton)
         page.addView(exchangeButton)
         page.addView(cashButton)
+        page.addView(invoicesButton)
         page.addView(section)
         page.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
@@ -114,6 +116,80 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+
+    private fun showInvoiceHistory() {
+        lifecycleScope.launch {
+            try {
+                val sales = dao.observeSales().first()
+                val purchases = dao.observePurchases().first()
+                val entries = mutableListOf<Pair<Long, View>>()
+                val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+                sales.forEach { sale ->
+                    val row = TextView(this@MainActivity).apply {
+                        text = "مبيع رقم #" + sale.id + " | " + dateFormat.format(java.util.Date(sale.createdAt)) +
+                            "\nالإجمالي: " + sale.total + " " + sale.currency +
+                            " | " + if (sale.paymentType == "DEBT") "آجل" else "نقدي"
+                        textSize = 15f
+                        setPadding(16, 14, 16, 14)
+                        setBackgroundColor(0xFFFFFFFF.toInt())
+                        setOnClickListener {
+                            lifecycleScope.launch {
+                                val items = dao.getSaleItems(sale.id)
+                                val details = items.joinToString("\n") { item ->
+                                    item.productNameSnapshot + " | " + item.quantityInBaseUnit + " × " +
+                                        item.unitPrice + " = " + item.lineTotal
+                                }
+                                AlertDialog.Builder(this@MainActivity)
+                                    .setTitle("تفاصيل فاتورة المبيع #" + sale.id)
+                                    .setMessage("الزبون: " + (sale.customerName ?: "غير محدد") + "\n" + details +
+                                        "\nالإجمالي: " + sale.total + " " + sale.currency)
+                                    .setPositiveButton("إغلاق", null).show()
+                            }
+                        }
+                    }
+                    entries.add(sale.createdAt to row)
+                }
+                purchases.forEach { purchase ->
+                    val row = TextView(this@MainActivity).apply {
+                        text = "شراء رقم #" + purchase.id + " | " + dateFormat.format(java.util.Date(purchase.createdAt)) +
+                            "\nالإجمالي: " + purchase.total + " " + purchase.currency +
+                            " | المورد: " + (purchase.supplierName ?: "غير محدد")
+                        textSize = 15f
+                        setPadding(16, 14, 16, 14)
+                        setBackgroundColor(0xFFFFFFFF.toInt())
+                        setOnClickListener {
+                            lifecycleScope.launch {
+                                val items = dao.getPurchaseItems(purchase.id)
+                                val details = items.joinToString("\n") { item ->
+                                    item.productNameSnapshot + " | " + item.quantityInBaseUnit + " × " +
+                                        item.unitCostSnapshot + " = " + item.lineTotal
+                                }
+                                AlertDialog.Builder(this@MainActivity)
+                                    .setTitle("تفاصيل فاتورة الشراء #" + purchase.id)
+                                    .setMessage("المورد: " + (purchase.supplierName ?: "غير محدد") + "\n" + details +
+                                        "\nالإجمالي: " + purchase.total + " " + purchase.currency)
+                                    .setPositiveButton("إغلاق", null).show()
+                            }
+                        }
+                    }
+                    entries.add(purchase.createdAt to row)
+                }
+                val content = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(12, 8, 12, 8) }
+                if (entries.isEmpty()) {
+                    content.addView(TextView(this@MainActivity).apply { text = "لا توجد فواتير محفوظة بعد."; textSize = 16f })
+                } else {
+                    entries.sortedByDescending { it.first }.forEach { content.addView(it.second) }
+                }
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("سجل الفواتير - اضغط لعرض التفاصيل")
+                    .setView(ScrollView(this@MainActivity).apply { addView(content) })
+                    .setPositiveButton("إغلاق", null)
+                    .show()
+            } catch (error: Exception) {
+                Toast.makeText(this@MainActivity, error.message ?: "تعذر عرض سجل الفواتير", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     private fun showPasscodeGate() {
         val firstSetup = !com.example.retailaccounting.security.PasscodeStore.hasPasscode(this)
