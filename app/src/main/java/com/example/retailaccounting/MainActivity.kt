@@ -367,62 +367,76 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val products = dao.observeProducts().first()
             if (products.isEmpty()) { Toast.makeText(this@MainActivity, "أضف صنفاً أولاً", Toast.LENGTH_LONG).show(); return@launch }
+            val drafts = mutableListOf<com.example.retailaccounting.data.SaleItem>()
             val box = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
-            val spinner = Spinner(this@MainActivity).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, products.map { it.name }) }
-            fun field(label: String) = EditText(this@MainActivity).apply { hint = label; textSize = 16f }
-            val qty = field("الكمية المباعة").apply { inputType = 8194 }
-            val price = field("سعر بيع الوحدة").apply { inputType = 8194 }
-            val customer = field("اسم الزبون (اختياري)")
-            val payment = Spinner(this@MainActivity).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("نقدي", "آجل")) }
-            spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
-                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) { price.setText(products[position].salePrice.toString()) }
+            val itemsPanel = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+            val totalLabel = TextView(this@MainActivity).apply { textSize = 17f; text = "إجمالي الفاتورة: 0" }
+            fun refreshLines() {
+                itemsPanel.removeAllViews()
+                drafts.forEachIndexed { index, item ->
+                    val row = TextView(this@MainActivity).apply {
+                        text = (index + 1).toString() + ". " + item.productNameSnapshot + " | الكمية: " + item.quantityInBaseUnit + " | سعر الوحدة: " + item.unitPrice + " | الإجمالي: " + item.lineTotal + "\n(اضغط على السطر لحذفه)"
+                        textSize = 14f; setPadding(12, 12, 12, 12)
+                        setOnClickListener { drafts.removeAt(index); refreshLines() }
+                    }
+                    itemsPanel.addView(row)
+                }
+                totalLabel.text = "إجمالي الفاتورة: " + drafts.sumOf { it.lineTotal }
             }
-            box.addView(spinner); box.addView(qty); box.addView(price); box.addView(customer); box.addView(payment)
-            val dialog = AlertDialog.Builder(this@MainActivity).setTitle("تسجيل فاتورة مبيع").setView(box).setNegativeButton("إلغاء", null).setPositiveButton("حفظ", null).create()
+            val addLine = Button(this@MainActivity).apply {
+                text = "＋ إضافة صنف إلى المبيع"
+                setOnClickListener {
+                    val lineBox = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(20, 8, 20, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+                    val productSpinner = Spinner(this@MainActivity).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, products.map { it.name }) }
+                    val qtyInput = EditText(this@MainActivity).apply { hint = "الكمية المباعة"; inputType = 8194 }
+                    val priceInput = EditText(this@MainActivity).apply { hint = "سعر بيع الوحدة"; inputType = 8194 }
+                    productSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                        override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                        override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) { priceInput.setText(products[position].salePrice.toString()) }
+                    }
+                    lineBox.addView(productSpinner); lineBox.addView(qtyInput); lineBox.addView(priceInput)
+                    val lineDialog = AlertDialog.Builder(this@MainActivity).setTitle("إضافة صنف للفاتورة").setView(lineBox).setNegativeButton("إلغاء", null).setPositiveButton("إضافة", null).create()
+                    lineDialog.setOnShowListener {
+                        lineDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                            val qty = qtyInput.text.toString().toDoubleOrNull()
+                            val price = priceInput.text.toString().toDoubleOrNull()
+                            if (qty == null || !qty.isFinite() || qty <= 0.0) { qtyInput.error = "أدخل كمية صحيحة"; return@setOnClickListener }
+                            if (price == null || !price.isFinite() || price < 0.0) { priceInput.error = "أدخل سعراً صحيحاً"; return@setOnClickListener }
+                            val product = products[productSpinner.selectedItemPosition]
+                            if (drafts.any { it.productId == product.id }) { Toast.makeText(this@MainActivity, "الصنف موجود مسبقاً؛ احذف السطر وعدّل كميته", Toast.LENGTH_LONG).show(); return@setOnClickListener }
+                            if (drafts.isNotEmpty() && drafts.first().let { first -> products.first { it.id == first.productId }.currency != product.currency }) { Toast.makeText(this@MainActivity, "لا يمكن جمع عملتين مختلفتين في فاتورة واحدة", Toast.LENGTH_LONG).show(); return@setOnClickListener }
+                            val line = com.example.retailaccounting.domain.SaleCalculator.calculateLine(com.example.retailaccounting.domain.SaleLineInput(qty, 1.0, price, product.costPrice))
+                            drafts.add(com.example.retailaccounting.data.SaleItem(saleId = 0, productId = product.id, productNameSnapshot = product.name, quantityInSelectedUnit = qty, selectedUnit = product.baseUnit, baseUnitsPerSelectedUnit = 1.0, quantityInBaseUnit = line.quantityInBaseUnit, unitPrice = price, unitCostSnapshot = product.costPrice, lineTotal = line.lineTotal))
+                            refreshLines(); lineDialog.dismiss()
+                        }
+                    }
+                    lineDialog.show()
+                }
+            }
+            val customer = EditText(this@MainActivity).apply { hint = "اسم الزبون (مطلوب للبيع الآجل)" }
+            val payment = Spinner(this@MainActivity).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("نقدي", "آجل")) }
+            box.addView(addLine); box.addView(itemsPanel); box.addView(totalLabel); box.addView(customer); box.addView(payment)
+            val dialog = AlertDialog.Builder(this@MainActivity).setTitle("فاتورة مبيع متعددة الأصناف").setView(ScrollView(this@MainActivity).apply { addView(box) }).setNegativeButton("إلغاء", null).setPositiveButton("حفظ الفاتورة", null).create()
             dialog.setOnShowListener {
                 dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                    val quantity = qty.text.toString().toDoubleOrNull()
-                    val salePrice = price.text.toString().toDoubleOrNull()
-                    if (quantity == null || quantity <= 0.0) { qty.error = "أدخل كمية صحيحة"; return@setOnClickListener }
-                    if (salePrice == null || salePrice < 0.0) { price.error = "أدخل سعراً صحيحاً"; return@setOnClickListener }
-                    val product = products[spinner.selectedItemPosition]
+                    if (drafts.isEmpty()) { Toast.makeText(this@MainActivity, "أضف صنفاً واحداً على الأقل", Toast.LENGTH_LONG).show(); return@setOnClickListener }
                     val customerName = customer.text.toString().trim()
-                    if (payment.selectedItemPosition == 1 && customerName.isBlank()) {
-                        customer.error = "اسم الزبون مطلوب للبيع الآجل"
-                        return@setOnClickListener
-                    }
-                    val line = com.example.retailaccounting.domain.SaleCalculator.calculateLine(com.example.retailaccounting.domain.SaleLineInput(quantity, 1.0, salePrice, product.costPrice))
+                    val isDebt = payment.selectedItemPosition == 1
+                    if (isDebt && customerName.isBlank()) { customer.error = "اسم الزبون مطلوب للبيع الآجل"; return@setOnClickListener }
+                    val money = products.first { it.id == drafts.first().productId }.currency
+                    val total = drafts.sumOf { it.lineTotal }
+                    if (!total.isFinite()) { Toast.makeText(this@MainActivity, "إجمالي الفاتورة غير صالح", Toast.LENGTH_LONG).show(); return@setOnClickListener }
                     lifecycleScope.launch {
                         try {
-                            val exchange = if (product.currency == "USD") 1.0 else (dao.getExchangeRate()?.usdToSyp ?: 0.0)
+                            val exchange = if (money == "USD") 1.0 else (dao.getExchangeRate()?.usdToSyp ?: 0.0)
                             if (!exchange.isFinite() || exchange <= 0.0) throw IllegalStateException("أدخل سعر صرف صحيحاً قبل تسجيل المبيع بالليرة")
-                            val sale = com.example.retailaccounting.data.Sale(currency = product.currency, exchangeRateAtSale = exchange, subtotal = line.lineTotal, total = line.lineTotal, paymentType = if (payment.selectedItemPosition == 0) "CASH" else "DEBT", customerName = customerName.ifBlank { null })
-                            val item = com.example.retailaccounting.data.SaleItem(saleId = 0, productId = product.id, productNameSnapshot = product.name, quantityInSelectedUnit = quantity, selectedUnit = product.baseUnit, baseUnitsPerSelectedUnit = 1.0, quantityInBaseUnit = line.quantityInBaseUnit, unitPrice = salePrice, unitCostSnapshot = product.costPrice, lineTotal = line.lineTotal)
-                            val accountMovement = if (sale.paymentType == "DEBT") {
-                                com.example.retailaccounting.data.AccountMovement(
-                                    partyType = "CUSTOMER",
-                                    partyName = customerName,
-                                    movementType = "SALE_CREDIT",
-                                    amount = sale.total,
-                                    currency = sale.currency,
-                                    note = "فاتورة مبيع آجلة"
-                                )
-                            } else null
-                            val cashMovement = if (sale.paymentType == "CASH") {
-                                com.example.retailaccounting.data.CashMovement(
-                                    direction = "IN",
-                                    amount = sale.total,
-                                    currency = sale.currency,
-                                    reason = "مبيع نقدي"
-                                )
-                            } else null
-                            dao.saveSaleAndDeductStock(sale, listOf(item), accountMovement, cashMovement)
-                            Toast.makeText(this@MainActivity, "تم حفظ فاتورة المبيع وتحديث المخزون", Toast.LENGTH_LONG).show()
+                            val sale = com.example.retailaccounting.data.Sale(currency = money, exchangeRateAtSale = exchange, subtotal = total, total = total, paymentType = if (isDebt) "DEBT" else "CASH", customerName = customerName.ifBlank { null })
+                            val accountMovement = if (isDebt) com.example.retailaccounting.data.AccountMovement(partyType = "CUSTOMER", partyName = customerName, movementType = "SALE_CREDIT", amount = total, currency = money, note = "فاتورة مبيع آجلة") else null
+                            val cashMovement = if (!isDebt) com.example.retailaccounting.data.CashMovement(direction = "IN", amount = total, currency = money, reason = "مبيع نقدي") else null
+                            dao.saveSaleAndDeductStock(sale, drafts.toList(), accountMovement, cashMovement)
+                            Toast.makeText(this@MainActivity, "تم حفظ فاتورة المبيع وتحديث المخزون والحساب", Toast.LENGTH_LONG).show()
                             dialog.dismiss()
-                        } catch (error: Exception) {
-                            Toast.makeText(this@MainActivity, error.message ?: "تعذر حفظ الفاتورة", Toast.LENGTH_LONG).show()
-                        }
+                        } catch (error: Exception) { Toast.makeText(this@MainActivity, error.message ?: "تعذر حفظ فاتورة المبيع", Toast.LENGTH_LONG).show() }
                     }
                 }
             }
