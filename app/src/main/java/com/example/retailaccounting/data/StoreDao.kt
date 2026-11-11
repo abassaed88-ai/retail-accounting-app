@@ -22,8 +22,8 @@ abstract class StoreDao {
     @Query("UPDATE products SET quantity = quantity - :quantity WHERE id = :productId AND isActive = 1")
     abstract suspend fun deductStock(productId: Long, quantity: Double): Int
 
-    @Query("UPDATE products SET quantity = quantity + :quantity WHERE id = :productId AND isActive = 1")
-    abstract suspend fun addStock(productId: Long, quantity: Double): Int
+    @Query("UPDATE products SET quantity = quantity + :quantity, costPrice = :unitCost, currency = :currency WHERE id = :productId AND isActive = 1")
+    abstract suspend fun addPurchasedStock(productId: Long, quantity: Double, unitCost: Double, currency: String): Int
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     abstract suspend fun saveExchangeRate(rate: ExchangeRate)
@@ -85,7 +85,7 @@ abstract class StoreDao {
             require(product != null && product.isActive) {
                 "لا يمكن شراء صنف غير مسجل أو مؤرشف: ${item.productNameSnapshot}"
             }
-            val changed = addStock(item.productId, item.quantityInBaseUnit)
+            val changed = addPurchasedStock(item.productId, item.quantityInBaseUnit, item.unitCostSnapshot, purchase.currency)
             check(changed == 1) { "تعذر تحديث مخزون الصنف: ${item.productNameSnapshot}" }
         }
         val purchaseId = insertPurchase(purchase)
