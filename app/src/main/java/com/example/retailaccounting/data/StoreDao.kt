@@ -163,6 +163,9 @@ abstract class StoreDao {
     ): Long {
         require(items.isNotEmpty()) { "لا يمكن حفظ فاتورة شراء فارغة" }
         require(purchase.total.isFinite() && purchase.total >= 0.0) { "إجمالي فاتورة الشراء غير صالح" }
+        require(items.map { it.productId }.distinct().size == items.size) { "لا تكرر الصنف نفسه في الفاتورة؛ اجمع كميته في سطر واحد" }
+        val calculatedTotal = items.sumOf { it.lineTotal }
+        require(calculatedTotal.isFinite() && kotlin.math.abs(calculatedTotal - purchase.total) < 0.000001) { "إجمالي الفاتورة لا يطابق مجموع الأصناف" }
         if (accountMovement != null) {
             require(accountMovement.partyType == "SUPPLIER" && accountMovement.movementType == "PURCHASE_CREDIT") { "حركة حساب المورد غير صحيحة" }
             require(accountMovement.amount == purchase.total && accountMovement.currency == purchase.currency) { "مديونية المورد لا تطابق الفاتورة" }
