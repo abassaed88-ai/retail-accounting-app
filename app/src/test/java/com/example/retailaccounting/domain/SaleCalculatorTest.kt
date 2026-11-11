@@ -26,6 +26,16 @@ class SaleCalculatorTest {
         }
     }
 
+    @Test fun rejectsNaNAndInfiniteMoneyInputs() {
+        assertThrows(IllegalArgumentException::class.java) { SaleCalculator.calculateLine(SaleLineInput(Double.NaN, 1.0, 10.0, 4.0)) }
+        assertThrows(IllegalArgumentException::class.java) { SaleCalculator.calculateLine(SaleLineInput(1.0, 1.0, Double.POSITIVE_INFINITY, 4.0)) }
+        assertThrows(IllegalArgumentException::class.java) { SaleCalculator.saleTotal(listOf(10.0), Double.NaN) }
+    }
+
+    @Test fun rejectsOverflowedInvoiceTotals() {
+        assertThrows(IllegalArgumentException::class.java) { SaleCalculator.saleTotal(listOf(Double.MAX_VALUE, Double.MAX_VALUE), 0.0) }
+    }
+
     @Test fun rejectsDiscountGreaterThanSubtotal() {
         assertThrows(IllegalArgumentException::class.java) {
             SaleCalculator.saleTotal(listOf(10.0), 11.0)
