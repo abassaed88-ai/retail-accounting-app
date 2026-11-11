@@ -289,12 +289,16 @@ class MainActivity : AppCompatActivity() {
             val currency = Spinner(this@MainActivity).apply {
                 adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("USD", "SYP"))
             }
+            val payment = Spinner(this@MainActivity).apply {
+                adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("نقدي", "آجل"))
+            }
             box.addView(productSpinner)
             box.addView(quantity)
             box.addView(unitCost)
             box.addView(supplier)
             box.addView(invoiceNumber)
             box.addView(currency)
+            box.addView(payment)
             AlertDialog.Builder(this@MainActivity)
                 .setTitle("تسجيل فاتورة شراء")
                 .setView(box)
@@ -315,15 +319,23 @@ class MainActivity : AppCompatActivity() {
                             }
                             val product = products[productSpinner.selectedItemPosition]
                             val money = currency.selectedItem.toString()
+                            val supplierName = supplier.text.toString().trim()
+                            val isDebt = payment.selectedItemPosition == 1
+                            if (isDebt && supplierName.isBlank()) {
+                                supplier.error = "اسم المورد مطلوب للشراء الآجل"
+                                return@setOnClickListener
+                            }
                             val total = qty * cost
+                            if (!total.isFinite()) { unitCost.error = "قيمة الفاتورة كبيرة أو غير صالحة"; return@setOnClickListener }
                             lifecycleScope.launch {
                                 try {
-                                    val rate = if (money == "USD") 1.0 else (dao.getExchangeRate()?.usdToSyp ?: 1.0)
+                                    val rate = if (money == "USD") 1.0 else (dao.getExchangeRate()?.usdToSyp ?: 0.0)
+                                    if (!rate.isFinite() || rate <= 0.0) throw IllegalStateException("أدخل سعر صرف صحيحاً قبل تسجيل فاتورة بالليرة")
                                     val purchase = com.example.retailaccounting.data.Purchase(
                                         currency = money,
                                         exchangeRateAtPurchase = rate,
                                         total = total,
-                                        supplierName = supplier.text.toString().trim().ifBlank { null },
+                                        supplierName = supplierName.ifBlank { null },
                                         invoiceNumber = invoiceNumber.text.toString().trim()
                                     )
                                     val item = com.example.retailaccounting.data.PurchaseItem(
@@ -334,7 +346,25 @@ class MainActivity : AppCompatActivity() {
                                         unitCostSnapshot = cost,
                                         lineTotal = total
                                     )
-                                    dao.savePurchaseAndAddStock(purchase, listOf(item))
+                                    val accountMovement = if (isDebt) {
+                                        com.example.retailaccounting.data.AccountMovement(
+                                            partyType = "SUPPLIER",
+                                            partyName = supplierName,
+                                            movementType = "PURCHASE_CREDIT",
+                                            amount = total,
+                                            currency = money,
+                                            note = "فاتورة شراء آجلة"
+                                        )
+                                    } else null
+                                    val cashMovement = if (!isDebt) {
+                                        com.example.retailaccounting.data.CashMovement(
+                                            direction = "OUT",
+                                            amount = total,
+                                            currency = money,
+                                            reason = "فاتورة شراء"
+                                        )
+                                    } else null
+                                    dao.savePurchaseAndAddStock(purchase, listOf(item), accountMovement, cashMovement)
                                     Toast.makeText(this@MainActivity, "تم حفظ فاتورة الشراء وتحديث المخزون", Toast.LENGTH_LONG).show()
                                     dialog.dismiss()
                                 } catch (error: Exception) {
