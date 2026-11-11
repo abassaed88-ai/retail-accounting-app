@@ -70,6 +70,27 @@ abstract class StoreDao {
     abstract fun observeSuppliers(): Flow<List<Supplier>>
 
     @Insert
+    abstract suspend fun insertAccountMovement(movement: AccountMovement): Long
+
+    @Query("SELECT * FROM account_movements ORDER BY createdAt DESC")
+    abstract fun observeAccountMovements(): Flow<List<AccountMovement>>
+
+    @Query("SELECT * FROM account_movements WHERE partyType = :partyType AND partyName = :partyName ORDER BY createdAt DESC")
+    abstract fun observePartyMovements(partyType: String, partyName: String): Flow<List<AccountMovement>>
+
+    // Positive amounts represent amounts owed to the shop by customers,
+    // or amounts owed by the shop to suppliers. Payments are negative.
+    @Transaction
+    open suspend fun recordAccountMovement(movement: AccountMovement): Long {
+        require(movement.partyType == "CUSTOMER" || movement.partyType == "SUPPLIER") { "نوع الحساب غير صحيح" }
+        require(movement.partyName.isNotBlank()) { "اسم الطرف مطلوب" }
+        require(movement.movementType in setOf("SALE_CREDIT", "PURCHASE_CREDIT", "PAYMENT", "ADJUSTMENT")) { "نوع الحركة غير صحيح" }
+        require(movement.amount.isFinite() && movement.amount != 0.0) { "قيمة الحركة غير صحيحة" }
+        require(movement.currency == "USD" || movement.currency == "SYP") { "العملة غير صحيحة" }
+        return insertAccountMovement(movement)
+    }
+
+    @Insert
     abstract suspend fun insertExpense(expense: Expense): Long
 
     @Query("SELECT * FROM expenses ORDER BY createdAt DESC")
