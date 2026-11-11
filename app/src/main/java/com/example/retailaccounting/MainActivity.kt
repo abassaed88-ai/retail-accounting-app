@@ -231,6 +231,40 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun printInvoice(jobName: String, plainText: String) {
+        try {
+            val htmlText = plainText
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\n", "<br>")
+            val html = """
+                <!doctype html>
+                <html lang="ar" dir="rtl">
+                <head><meta charset="utf-8">
+                <style>
+                body { font-family: sans-serif; direction: rtl; text-align: right; padding: 28px; color: #25202A; }
+                h2 { color: #C2185B; border-bottom: 2px solid #C2185B; padding-bottom: 12px; }
+                .content { font-size: 16px; line-height: 2.0; white-space: normal; }
+                </style></head>
+                <body><h2>Good Girl</h2><div class="content">$htmlText</div></body></html>
+            """.trimIndent()
+            val webView = android.webkit.WebView(this)
+            webView.settings.defaultTextEncodingName = "UTF-8"
+            webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+            webView.webViewClient = object : android.webkit.WebViewClient() {
+                override fun onPageFinished(view: android.webkit.WebView, url: String?) {
+                    val printManager = getSystemService(android.content.Context.PRINT_SERVICE) as android.print.PrintManager
+                    val adapter = view.createPrintDocumentAdapter(jobName)
+                    printManager.print(jobName, adapter, android.print.PrintAttributes.Builder().build())
+                    Toast.makeText(this@MainActivity, "افتح نافذة الطباعة واختر حفظ بصيغة PDF", Toast.LENGTH_LONG).show()
+                }
+            }
+        } catch (error: Exception) {
+            Toast.makeText(this, error.message ?: "تعذرت تهيئة الفاتورة للطباعة", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun showInvoiceHistory() {
         lifecycleScope.launch {
             try {
@@ -257,6 +291,12 @@ class MainActivity : AppCompatActivity() {
                                     .setTitle("تفاصيل فاتورة المبيع #" + sale.id)
                                     .setMessage("الزبون: " + (sale.customerName ?: "غير محدد") + "\n" + details +
                                         "\nالإجمالي: " + sale.total + " " + sale.currency)
+                                    .setNeutralButton("طباعة / PDF") { _, _ ->
+                                        printInvoice("فاتورة مبيع رقم " + sale.id,
+                                            "Good Girl\nفاتورة مبيع رقم: " + sale.id + "\nالتاريخ: " + dateFormat.format(java.util.Date(sale.createdAt)) +
+                                            "\nالزبون: " + (sale.customerName ?: "غير محدد") + "\n" + details +
+                                            "\nالإجمالي: " + sale.total + " " + sale.currency)
+                                    }
                                     .setPositiveButton("إغلاق", null).show()
                             }
                         }
@@ -282,6 +322,12 @@ class MainActivity : AppCompatActivity() {
                                     .setTitle("تفاصيل فاتورة الشراء #" + purchase.id)
                                     .setMessage("المورد: " + (purchase.supplierName ?: "غير محدد") + "\n" + details +
                                         "\nالإجمالي: " + purchase.total + " " + purchase.currency)
+                                    .setNeutralButton("طباعة / PDF") { _, _ ->
+                                        printInvoice("فاتورة شراء رقم " + purchase.id,
+                                            "Good Girl\nفاتورة شراء رقم: " + purchase.id + "\nالتاريخ: " + dateFormat.format(java.util.Date(purchase.createdAt)) +
+                                            "\nالمورد: " + (purchase.supplierName ?: "غير محدد") + "\n" + details +
+                                            "\nالإجمالي: " + purchase.total + " " + purchase.currency)
+                                    }
                                     .setPositiveButton("إغلاق", null).show()
                             }
                         }
