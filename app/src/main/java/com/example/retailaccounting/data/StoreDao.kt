@@ -37,6 +37,20 @@ abstract class StoreDao {
     @Insert
     abstract suspend fun insertSaleItems(items: List<SaleItem>)
 
+    @Insert
+    abstract suspend fun insertPurchase(purchase: Purchase): Long
+
+    @Insert
+    abstract suspend fun insertPurchaseItems(items: List<PurchaseItem>)
+
+    @Insert
+    abstract suspend fun insertStockMovement(movement: StockMovement): Long
+
+    @Query("SELECT * FROM purchases ORDER BY createdAt DESC")
+    abstract fun observePurchases(): Flow<List<Purchase>>
+
+    @Query("SELECT * FROM stock_movements WHERE productId = :productId ORDER BY createdAt DESC")
+    abstract fun observeStockMovements(productId: Long): Flow<List<StockMovement>>
     @Query("SELECT * FROM sales ORDER BY createdAt DESC")
     abstract fun observeSales(): Flow<List<Sale>>
 
@@ -61,6 +75,34 @@ abstract class StoreDao {
     @Insert
     abstract suspend fun insertCashMovement(movement: CashMovement): Long
 
+    @Transaction
+    open suspend fun savePurchaseAndAddStock(purchase: Purchase, items: List<PurchaseItem>): Long {
+        require(items.isNotEmpty()) { "لا يمكن حفظ فاتورة شراء فارغة" }
+        items.forEach { item ->
+            require(item.quantityInBaseUnit > 0.0) { "كمية الشراء يجب أن تكون أكبر من صفر" }
+            require(item.unitCostSnapshot >= 0.0) { "كلفة الشراء غير صحيحة" }
+            val product = getProduct(item.productId)
+            require(product != null && product.isActive) {
+                "لا يمكن شراء صنف غير مسجل أو مؤرشف: ${item.productNameSnapshot}"
+            }
+            val changed = addStock(item.productId, item.quantityInBaseUnit)
+            check(changed == 1) { "تعذر تحديث مخزون الصنف: ${item.productNameSnapshot}" }
+        }
+        val purchaseId = insertPurchase(purchase)
+        insertPurchaseItems(items.map { it.copy(purchaseId = purchaseId) })
+        items.forEach { item ->
+            insertStockMovement(StockMovement(
+                productId = item.productId,
+                productNameSnapshot = item.productNameSnapshot,
+                movementType = "PURCHASE",
+                quantityDelta = item.quantityInBaseUnit,
+                unitCostSnapshot = item.unitCostSnapshot,
+                currency = purchase.currency,
+                referenceId = purchaseId
+            ))
+        }
+        return purchaseId
+    }
     @Transaction
     open suspend fun saveSaleAndDeductStock(sale: Sale, items: List<SaleItem>): Long {
         require(items.isNotEmpty()) { "لا يمكن حفظ فاتورة فارغة" }
