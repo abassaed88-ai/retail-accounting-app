@@ -171,13 +171,36 @@ class MainActivity : AppCompatActivity() {
                     if (quantity == null || quantity <= 0.0) { qty.error = "أدخل كمية صحيحة"; return@setOnClickListener }
                     if (salePrice == null || salePrice < 0.0) { price.error = "أدخل سعراً صحيحاً"; return@setOnClickListener }
                     val product = products[spinner.selectedItemPosition]
+                    val customerName = customer.text.toString().trim()
+                    if (payment.selectedItemPosition == 1 && customerName.isBlank()) {
+                        customer.error = "اسم الزبون مطلوب للبيع الآجل"
+                        return@setOnClickListener
+                    }
                     val line = com.example.retailaccounting.domain.SaleCalculator.calculateLine(com.example.retailaccounting.domain.SaleLineInput(quantity, 1.0, salePrice, product.costPrice))
                     lifecycleScope.launch {
                         try {
                             val exchange = if (product.currency == "USD") 1.0 else (dao.getExchangeRate()?.usdToSyp ?: 1.0)
-                            val sale = com.example.retailaccounting.data.Sale(currency = product.currency, exchangeRateAtSale = exchange, subtotal = line.lineTotal, total = line.lineTotal, paymentType = if (payment.selectedItemPosition == 0) "CASH" else "DEBT", customerName = customer.text.toString().trim().ifBlank { null })
+                            val sale = com.example.retailaccounting.data.Sale(currency = product.currency, exchangeRateAtSale = exchange, subtotal = line.lineTotal, total = line.lineTotal, paymentType = if (payment.selectedItemPosition == 0) "CASH" else "DEBT", customerName = customerName.ifBlank { null })
                             val item = com.example.retailaccounting.data.SaleItem(saleId = 0, productId = product.id, productNameSnapshot = product.name, quantityInSelectedUnit = quantity, selectedUnit = product.baseUnit, baseUnitsPerSelectedUnit = 1.0, quantityInBaseUnit = line.quantityInBaseUnit, unitPrice = salePrice, unitCostSnapshot = product.costPrice, lineTotal = line.lineTotal)
-                            dao.saveSaleAndDeductStock(sale, listOf(item))
+                            val accountMovement = if (sale.paymentType == "DEBT") {
+                                com.example.retailaccounting.data.AccountMovement(
+                                    partyType = "CUSTOMER",
+                                    partyName = customerName,
+                                    movementType = "SALE_CREDIT",
+                                    amount = sale.total,
+                                    currency = sale.currency,
+                                    note = "فاتورة مبيع آجلة"
+                                )
+                            } else null
+                            val cashMovement = if (sale.paymentType == "CASH") {
+                                com.example.retailaccounting.data.CashMovement(
+                                    direction = "IN",
+                                    amount = sale.total,
+                                    currency = sale.currency,
+                                    reason = "مبيع نقدي"
+                                )
+                            } else null
+                            dao.saveSaleAndDeductStock(sale, listOf(item), accountMovement, cashMovement)
                             Toast.makeText(this@MainActivity, "تم حفظ فاتورة المبيع وتحديث المخزون", Toast.LENGTH_LONG).show()
                             dialog.dismiss()
                         } catch (error: Exception) {
