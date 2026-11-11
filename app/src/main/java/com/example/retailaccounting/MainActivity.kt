@@ -23,7 +23,7 @@ class MainActivity : AppCompatActivity() {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(28, 28, 28, 28)
-            layoutDirection = LinearLayout.RTL
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
             setBackgroundColor(0xFFF7F3FA.toInt())
         }
         val title = TextView(this).apply {
