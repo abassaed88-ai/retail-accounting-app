@@ -408,7 +408,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 val movements = dao.observeCashMovements().first()
                 val currencies = listOf("USD", "SYP")
-                val report = currencies.joinToString("\n\n") { currency ->
+                val summary = currencies.joinToString("\n\n") { currency ->
                     val rows = movements.filter { it.currency == currency }
                     val incoming = rows.filter { it.direction == "IN" }.sumOf { it.amount }
                     val outgoing = rows.filter { it.direction == "OUT" }.sumOf { it.amount }
@@ -418,9 +418,26 @@ class MainActivity : AppCompatActivity() {
                         "\nصافي حركة الصندوق: " + (incoming - outgoing) +
                         "\nعدد الحركات: " + rows.size
                 }
+                val dateFormat = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+                val recent = movements.take(20).joinToString("\n\n") { movement ->
+                    val direction = if (movement.direction == "IN") "قبض" else "دفع"
+                    direction + " | " + movement.amount + " " + movement.currency +
+                        "\n" + movement.reason +
+                        "\n" + dateFormat.format(java.util.Date(movement.createdAt)) +
+                        (movement.referenceId?.let { " | مرجع العملية #$it" } ?: "")
+                }
+                val report = summary + "\n\nآخر الحركات (حتى 20):\n" +
+                    if (recent.isBlank()) "لا توجد حركات مسجلة" else recent
                 AlertDialog.Builder(this@MainActivity)
-                    .setTitle("ملخص حركة الصندوق")
-                    .setMessage(report)
+                    .setTitle("ملخص وسجل حركة الصندوق")
+                    .setView(ScrollView(this@MainActivity).apply {
+                        addView(TextView(this@MainActivity).apply {
+                            text = report
+                            textSize = 15f
+                            setPadding(24, 16, 24, 16)
+                            layoutDirection = View.LAYOUT_DIRECTION_RTL
+                        })
+                    })
                     .setPositiveButton("إغلاق", null)
                     .show()
             } catch (error: Exception) {
