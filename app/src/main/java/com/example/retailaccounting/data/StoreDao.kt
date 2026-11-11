@@ -139,17 +139,32 @@ abstract class StoreDao {
         return id
     }
     @Transaction
-    open suspend fun savePurchaseAndAddStock(purchase: Purchase, items: List<PurchaseItem>): Long {
+    open suspend fun savePurchaseAndAddStock(
+        purchase: Purchase,
+        items: List<PurchaseItem>,
+        accountMovement: AccountMovement? = null,
+        cashMovement: CashMovement? = null
+    ): Long {
         require(items.isNotEmpty()) { "لا يمكن حفظ فاتورة شراء فارغة" }
+        require(purchase.total.isFinite() && purchase.total >= 0.0) { "إجمالي فاتورة الشراء غير صالح" }
+        if (accountMovement != null) {
+            require(accountMovement.partyType == "SUPPLIER" && accountMovement.movementType == "PURCHASE_CREDIT") { "حركة حساب المورد غير صحيحة" }
+            require(accountMovement.amount == purchase.total && accountMovement.currency == purchase.currency) { "مديونية المورد لا تطابق الفاتورة" }
+            require(purchase.supplierName?.isNotBlank() == true && accountMovement.partyName == purchase.supplierName) { "اسم المورد مطلوب للشراء الآجل" }
+            require(cashMovement == null) { "لا يجوز تسجيل حركة صندوق نقدية للشراء الآجل" }
+        } else {
+            require(cashMovement != null && cashMovement.direction == "OUT" && cashMovement.amount == purchase.total && cashMovement.currency == purchase.currency) { "حركة الصندوق لا تطابق فاتورة الشراء" }
+        }
         items.forEach { item ->
-            require(item.quantityInBaseUnit > 0.0) { "كمية الشراء يجب أن تكون أكبر من صفر" }
-            require(item.unitCostSnapshot >= 0.0) { "كلفة الشراء غير صحيحة" }
+            require(item.quantityInBaseUnit.isFinite() && item.quantityInBaseUnit > 0.0) { "كمية الشراء يجب أن تكون أكبر من صفر" }
+            require(item.unitCostSnapshot.isFinite() && item.unitCostSnapshot >= 0.0) { "كلفة الشراء غير صحيحة" }
+            require(item.lineTotal.isFinite() && item.lineTotal >= 0.0) { "إجمالي الصنف غير صالح" }
             val product = getProduct(item.productId)
             require(product != null && product.isActive) {
-                "لا يمكن شراء صنف غير مسجل أو مؤرشف: ${item.productNameSnapshot}"
+                "لا يمكن شراء صنف غير مسجل أو مؤرشف: " + item.productNameSnapshot
             }
             val changed = addPurchasedStock(item.productId, item.quantityInBaseUnit, item.unitCostSnapshot, purchase.currency)
-            check(changed == 1) { "تعذر تحديث مخزون الصنف: ${item.productNameSnapshot}" }
+            check(changed == 1) { "تعذر تحديث مخزون الصنف: " + item.productNameSnapshot }
         }
         val purchaseId = insertPurchase(purchase)
         insertPurchaseItems(items.map { it.copy(purchaseId = purchaseId) })
@@ -164,6 +179,8 @@ abstract class StoreDao {
                 referenceId = purchaseId
             ))
         }
+        accountMovement?.let { insertAccountMovement(it.copy(referenceId = purchaseId)) }
+        cashMovement?.let { insertCashMovement(it.copy(reason = "شراء نقدي: " + it.reason)) }
         return purchaseId
     }
     @Transaction
