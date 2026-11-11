@@ -1,5 +1,6 @@
 package com.example.retailaccounting.data
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -7,6 +8,7 @@ import androidx.room.PrimaryKey
 data class Product(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val name: String,
+    @ColumnInfo(defaultValue = "''") val code: String = "",
     val category: String = "",
     val baseUnit: String = "قطعة",
     val quantity: Double = 0.0,
