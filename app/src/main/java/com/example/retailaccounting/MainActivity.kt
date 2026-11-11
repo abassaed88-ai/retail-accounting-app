@@ -263,6 +263,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 16f
         }
         val name = input("اسم الصنف")
+        val code = input("رمز الصنف (اختياري)")
         val category = input("التصنيف (اختياري)")
         val unit = input("وحدة القياس، مثال: قطعة أو مل")
         val quantity = input("الكمية الافتتاحية").apply { inputType = 8194 }
@@ -275,7 +276,7 @@ class MainActivity : AppCompatActivity() {
                 listOf("USD", "SYP")
             )
         }
-        box.addView(name); box.addView(category); box.addView(unit)
+        box.addView(name); box.addView(code); box.addView(category); box.addView(unit)
         box.addView(quantity); box.addView(cost); box.addView(price); box.addView(currency)
 
         AlertDialog.Builder(this)
