@@ -28,11 +28,14 @@ object ReportCalculator {
         }
         val saleIds = selectedSales.map { it.id }.toSet()
         val selectedItems = items.filter { it.saleId in saleIds }
+        require(selectedSales.all { it.total.isFinite() && it.total >= 0.0 }) { "توجد قيمة مبيعات غير صالحة" }
+        require(selectedItems.all { it.quantityInBaseUnit.isFinite() && it.quantityInBaseUnit >= 0.0 && it.unitCostSnapshot.isFinite() && it.unitCostSnapshot >= 0.0 }) { "توجد كلفة بضاعة غير صالحة" }
         val revenue = selectedSales.sumOf { it.total }
         val cost = selectedItems.sumOf { it.quantityInBaseUnit * it.unitCostSnapshot }
         val expenseTotal = expenses.filter {
             it.createdAt >= startInclusive && it.createdAt < endExclusive && it.currency == currency
         }.sumOf { it.amount }
+        require(expenseTotal.isFinite() && expenseTotal >= 0.0) { "توجد مصروفات غير صالحة" }
         val gross = revenue - cost
         return FinancialTotals(
             sales = revenue,
