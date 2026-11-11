@@ -97,6 +97,7 @@ class MainActivity : AppCompatActivity() {
         val invoicesButton = Button(this).apply { text = "▤ سجل فواتير المبيع والشراء"; setOnClickListener { showInvoiceHistory() } }
         val backupButton = Button(this).apply { text = "⬇ إنشاء نسخة احتياطية"; setOnClickListener { backupLauncher.launch("GoodGirl-Backup.db") } }
         val restoreButton = Button(this).apply { text = "⬆ استعادة نسخة احتياطية"; setOnClickListener { restoreLauncher.launch(arrayOf("application/octet-stream", "application/x-sqlite3", "*/*")) } }
+        val archivedButton = Button(this).apply { text = "▣ الأصناف المؤرشفة"; setOnClickListener { showArchivedProducts() } }
         val section = TextView(this).apply {
             text = "الأصناف والمخزون"
             textSize = 20f
@@ -120,6 +121,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(invoicesButton)
         page.addView(backupButton)
         page.addView(restoreButton)
+        page.addView(archivedButton)
         page.addView(section)
         page.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
@@ -150,6 +152,19 @@ class MainActivity : AppCompatActivity() {
                 setPadding(18, 16, 18, 16)
                 setBackgroundColor(0xFFFFFFFF.toInt())
             }
+            row.setOnClickListener {
+                AlertDialog.Builder(this)
+                    .setTitle(product.name)
+                    .setMessage("رمز الصنف: " + product.code + "\nالتصنيف: " + product.category + "\nالكمية: " + product.quantity + " " + product.baseUnit)
+                    .setPositiveButton("أرشفة الصنف") { _, _ ->
+                        lifecycleScope.launch {
+                            dao.archiveProduct(product.id)
+                            Toast.makeText(this@MainActivity, "تمت أرشفة الصنف مع الحفاظ على فواتيره وحركاته", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    .setNegativeButton("إغلاق", null)
+                    .show()
+            }
             val params = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = 10 }
@@ -158,6 +173,43 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+
+    private fun showArchivedProducts() {
+        lifecycleScope.launch {
+            val archived = dao.observeArchivedProducts().first()
+            val panel = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(12, 8, 12, 8) }
+            if (archived.isEmpty()) {
+                panel.addView(TextView(this@MainActivity).apply { text = "لا توجد أصناف مؤرشفة."; textSize = 16f })
+            } else {
+                archived.forEach { product ->
+                    val row = TextView(this@MainActivity).apply {
+                        text = product.name + " | " + product.code + "\nالكمية: " + product.quantity + " " + product.baseUnit
+                        textSize = 15f
+                        setPadding(14, 14, 14, 14)
+                        setOnClickListener {
+                            AlertDialog.Builder(this@MainActivity)
+                                .setTitle("استعادة الصنف")
+                                .setMessage("إعادة تفعيل " + product.name + "؟")
+                                .setNegativeButton("إلغاء", null)
+                                .setPositiveButton("استعادة") { _, _ ->
+                                    lifecycleScope.launch {
+                                        dao.restoreProduct(product.id)
+                                        Toast.makeText(this@MainActivity, "تمت استعادة الصنف", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                                .show()
+                        }
+                    }
+                    panel.addView(row)
+                }
+            }
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("الأصناف المؤرشفة - اضغط للاستعادة")
+                .setView(ScrollView(this@MainActivity).apply { addView(panel) })
+                .setPositiveButton("إغلاق", null)
+                .show()
+        }
+    }
 
     private fun showInvoiceHistory() {
         lifecycleScope.launch {
