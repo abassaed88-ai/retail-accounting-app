@@ -18,6 +18,15 @@ abstract class StoreDao {
     @Insert
     abstract suspend fun insertProduct(product: Product): Long
 
+    @Query("UPDATE products SET isActive = 0 WHERE id = :productId")
+    abstract suspend fun archiveProduct(productId: Long): Int
+
+    @Query("UPDATE products SET isActive = 1 WHERE id = :productId")
+    abstract suspend fun restoreProduct(productId: Long): Int
+
+    @Query("SELECT * FROM products WHERE isActive = 0 ORDER BY name COLLATE NOCASE")
+    abstract fun observeArchivedProducts(): Flow<List<Product>>
+
     // Negative stock is intentionally permitted for a registered, active item.
     @Query("UPDATE products SET quantity = quantity - :quantity WHERE id = :productId AND isActive = 1")
     abstract suspend fun deductStock(productId: Long, quantity: Double): Int
