@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity() {
         }
         val saleButton = Button(this).apply { text = "＋ تسجيل فاتورة مبيع"; setOnClickListener { showSaleDialog() } }
         val expenseButton = Button(this).apply { text = "－ تسجيل مصروف"; setOnClickListener { showExpenseDialog() } }
+        val reportButton = Button(this).apply { text = "▤ تقرير اليوم"; setOnClickListener { showDailyReport() } }
         val section = TextView(this).apply {
             text = "الأصناف والمخزون"
             textSize = 20f
@@ -66,6 +67,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(purchaseButton)
         page.addView(saleButton)
         page.addView(expenseButton)
+        page.addView(reportButton)
         page.addView(section)
         page.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
@@ -103,6 +105,21 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+    private fun showDailyReport() {
+        lifecycleScope.launch {
+            try {
+                val start = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0) }
+                val end = (start.clone() as java.util.Calendar).apply { add(java.util.Calendar.DAY_OF_YEAR, 1) }
+                val sales = dao.observeSales().first()
+                val items = dao.observeSaleItems().first()
+                val expenses = dao.observeExpenses().first()
+                val usd = com.example.retailaccounting.domain.ReportCalculator.calculate(sales, items, expenses, start.timeInMillis, end.timeInMillis, "USD")
+                val syp = com.example.retailaccounting.domain.ReportCalculator.calculate(sales, items, expenses, start.timeInMillis, end.timeInMillis, "SYP")
+                val report = "تقرير اليوم\\n\\nالدولار USD\\nالمبيعات: ${usd.sales}\\nكلفة البضاعة: ${usd.costOfGoods}\\nالربح الإجمالي: ${usd.grossProfit}\\nالمصروفات: ${usd.expenses}\\nصافي الربح: ${usd.netProfit}\\nعدد الفواتير: ${usd.salesCount}\\n\\nالليرة SYP\\nالمبيعات: ${syp.sales}\\nكلفة البضاعة: ${syp.costOfGoods}\\nالربح الإجمالي: ${syp.grossProfit}\\nالمصروفات: ${syp.expenses}\\nصافي الربح: ${syp.netProfit}\\nعدد الفواتير: ${syp.salesCount}"
+                AlertDialog.Builder(this@MainActivity).setTitle("ملخص المبيعات والأرباح").setMessage(report).setPositiveButton("إغلاق", null).show()
+            } catch (error: Exception) { Toast.makeText(this@MainActivity, error.message ?: "تعذر إعداد التقرير", Toast.LENGTH_LONG).show() }
+        }
+    }
     private fun showExpenseDialog() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
         val title = EditText(this).apply { hint = "بيان المصروف" }
