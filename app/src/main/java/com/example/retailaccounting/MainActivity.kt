@@ -441,109 +441,107 @@ class MainActivity : AppCompatActivity() {
                 setPadding(24, 8, 24, 0)
                 layoutDirection = View.LAYOUT_DIRECTION_RTL
             }
-            fun field(label: String): EditText = EditText(this@MainActivity).apply {
-                hint = label
-                textSize = 16f
-            }
-            val productSpinner = Spinner(this@MainActivity).apply {
-                adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, products.map { it.name })
-            }
-            val quantity = field("الكمية المشتراة").apply { inputType = 8194 }
-            val unitCost = field("كلفة الوحدة الجديدة").apply { inputType = 8194 }
-            val supplier = field("اسم المورد (اختياري)")
-            val invoiceNumber = field("رقم الفاتورة (اختياري)")
-            val currency = Spinner(this@MainActivity).apply {
-                adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("USD", "SYP"))
-            }
-            val payment = Spinner(this@MainActivity).apply {
-                adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("نقدي", "آجل"))
-            }
-            box.addView(productSpinner)
-            box.addView(quantity)
-            box.addView(unitCost)
-            box.addView(supplier)
-            box.addView(invoiceNumber)
-            box.addView(currency)
-            box.addView(payment)
-            AlertDialog.Builder(this@MainActivity)
-                .setTitle("تسجيل فاتورة شراء")
-                .setView(box)
-                .setNegativeButton("إلغاء", null)
-                .setPositiveButton("حفظ", null)
-                .create().also { dialog ->
-                    dialog.setOnShowListener {
-                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                            val qty = quantity.text.toString().toDoubleOrNull()
-                            val cost = unitCost.text.toString().toDoubleOrNull()
-                            if (qty == null || qty <= 0.0) {
-                                quantity.error = "أدخل كمية أكبر من صفر"
-                                return@setOnClickListener
-                            }
-                            if (cost == null || cost < 0.0) {
-                                unitCost.error = "أدخل كلفة صحيحة"
-                                return@setOnClickListener
-                            }
-                            val product = products[productSpinner.selectedItemPosition]
-                            val money = currency.selectedItem.toString()
-                            val supplierName = supplier.text.toString().trim()
-                            val isDebt = payment.selectedItemPosition == 1
-                            if (isDebt && supplierName.isBlank()) {
-                                supplier.error = "اسم المورد مطلوب للشراء الآجل"
-                                return@setOnClickListener
-                            }
-                            val total = qty * cost
-                            if (!total.isFinite()) { unitCost.error = "قيمة الفاتورة كبيرة أو غير صالحة"; return@setOnClickListener }
-                            lifecycleScope.launch {
-                                try {
-                                    val rate = if (money == "USD") 1.0 else (dao.getExchangeRate()?.usdToSyp ?: 0.0)
-                                    if (!rate.isFinite() || rate <= 0.0) throw IllegalStateException("أدخل سعر صرف صحيحاً قبل تسجيل فاتورة بالليرة")
-                                    val purchase = com.example.retailaccounting.data.Purchase(
-                                        currency = money,
-                                        exchangeRateAtPurchase = rate,
-                                        total = total,
-                                        supplierName = supplierName.ifBlank { null },
-                                        invoiceNumber = invoiceNumber.text.toString().trim()
-                                    )
-                                    val item = com.example.retailaccounting.data.PurchaseItem(
-                                        purchaseId = 0,
-                                        productId = product.id,
-                                        productNameSnapshot = product.name,
-                                        quantityInBaseUnit = qty,
-                                        unitCostSnapshot = cost,
-                                        lineTotal = total
-                                    )
-                                    val accountMovement = if (isDebt) {
-                                        com.example.retailaccounting.data.AccountMovement(
-                                            partyType = "SUPPLIER",
-                                            partyName = supplierName,
-                                            movementType = "PURCHASE_CREDIT",
-                                            amount = total,
-                                            currency = money,
-                                            note = "فاتورة شراء آجلة"
-                                        )
-                                    } else null
-                                    val cashMovement = if (!isDebt) {
-                                        com.example.retailaccounting.data.CashMovement(
-                                            direction = "OUT",
-                                            amount = total,
-                                            currency = money,
-                                            reason = "فاتورة شراء"
-                                        )
-                                    } else null
-                                    dao.savePurchaseAndAddStock(purchase, listOf(item), accountMovement, cashMovement)
-                                    Toast.makeText(this@MainActivity, "تم حفظ فاتورة الشراء وتحديث المخزون", Toast.LENGTH_LONG).show()
-                                    dialog.dismiss()
-                                } catch (error: Exception) {
-                                    Toast.makeText(this@MainActivity, error.message ?: "تعذر حفظ الفاتورة", Toast.LENGTH_LONG).show()
-                                }
-                            }
+            val drafts = mutableListOf<com.example.retailaccounting.data.PurchaseItem>()
+            val itemsPanel = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL }
+            val totalLabel = TextView(this@MainActivity).apply { textSize = 17f; text = "إجمالي الفاتورة: 0" }
+            fun refreshLines() {
+                itemsPanel.removeAllViews()
+                drafts.forEachIndexed { index, item ->
+                    val row = TextView(this@MainActivity).apply {
+                        text = (index + 1).toString() + ". " + item.productNameSnapshot +
+                            " | الكمية: " + item.quantityInBaseUnit +
+                            " | الكلفة: " + item.unitCostSnapshot +
+                            " | الإجمالي: " + item.lineTotal + "\n(اضغط على السطر لحذفه)"
+                        textSize = 14f
+                        setPadding(12, 12, 12, 12)
+                        setOnClickListener {
+                            drafts.removeAt(index)
+                            refreshLines()
                         }
                     }
-                    dialog.show()
+                    itemsPanel.addView(row)
                 }
+                totalLabel.text = "إجمالي الفاتورة: " + drafts.sumOf { it.lineTotal }
+            }
+            val addLine = Button(this@MainActivity).apply {
+                text = "＋ إضافة صنف إلى الفاتورة"
+                setOnClickListener {
+                    val lineBox = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(20, 8, 20, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+                    val productSpinner = Spinner(this@MainActivity).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, products.map { it.name }) }
+                    val qtyInput = EditText(this@MainActivity).apply { hint = "الكمية"; inputType = 8194 }
+                    val costInput = EditText(this@MainActivity).apply { hint = "كلفة الوحدة"; inputType = 8194 }
+                    lineBox.addView(productSpinner); lineBox.addView(qtyInput); lineBox.addView(costInput)
+                    val lineDialog = AlertDialog.Builder(this@MainActivity).setTitle("إضافة صنف للفاتورة").setView(lineBox).setNegativeButton("إلغاء", null).setPositiveButton("إضافة", null).create()
+                    lineDialog.setOnShowListener {
+                        lineDialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                            val qty = qtyInput.text.toString().toDoubleOrNull()
+                            val cost = costInput.text.toString().toDoubleOrNull()
+                            if (qty == null || !qty.isFinite() || qty <= 0.0) { qtyInput.error = "أدخل كمية صحيحة"; return@setOnClickListener }
+                            if (cost == null || !cost.isFinite() || cost < 0.0) { costInput.error = "أدخل كلفة صحيحة"; return@setOnClickListener }
+                            val product = products[productSpinner.selectedItemPosition]
+                            val lineTotal = qty * cost
+                            if (!lineTotal.isFinite()) { costInput.error = "إجمالي الصنف غير صالح"; return@setOnClickListener }
+                            drafts.add(com.example.retailaccounting.data.PurchaseItem(
+                                purchaseId = 0,
+                                productId = product.id,
+                                productNameSnapshot = product.name,
+                                quantityInBaseUnit = qty,
+                                unitCostSnapshot = cost,
+                                lineTotal = lineTotal
+                            ))
+                            refreshLines()
+                            lineDialog.dismiss()
+                        }
+                    }
+                    lineDialog.show()
+                }
+            }
+            val supplier = EditText(this@MainActivity).apply { hint = "اسم المورد" }
+            val invoiceNumber = EditText(this@MainActivity).apply { hint = "رقم الفاتورة (اختياري)" }
+            val currency = Spinner(this@MainActivity).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("USD", "SYP")) }
+            val payment = Spinner(this@MainActivity).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("نقدي", "آجل")) }
+            box.addView(addLine); box.addView(itemsPanel); box.addView(totalLabel)
+            box.addView(supplier); box.addView(invoiceNumber); box.addView(currency); box.addView(payment)
+            val dialog = AlertDialog.Builder(this@MainActivity).setTitle("فاتورة شراء متعددة الأصناف").setView(ScrollView(this@MainActivity).apply { addView(box) }).setNegativeButton("إلغاء", null).setPositiveButton("حفظ الفاتورة", null).create()
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    if (drafts.isEmpty()) { Toast.makeText(this@MainActivity, "أضف صنفاً واحداً على الأقل", Toast.LENGTH_LONG).show(); return@setOnClickListener }
+                    val supplierName = supplier.text.toString().trim()
+                    val isDebt = payment.selectedItemPosition == 1
+                    if (isDebt && supplierName.isBlank()) { supplier.error = "اسم المورد مطلوب للشراء الآجل"; return@setOnClickListener }
+                    val money = currency.selectedItem.toString()
+                    val total = drafts.sumOf { it.lineTotal }
+                    if (!total.isFinite()) { Toast.makeText(this@MainActivity, "إجمالي الفاتورة غير صالح", Toast.LENGTH_LONG).show(); return@setOnClickListener }
+                    lifecycleScope.launch {
+                        try {
+                            val rate = if (money == "USD") 1.0 else (dao.getExchangeRate()?.usdToSyp ?: 0.0)
+                            if (!rate.isFinite() || rate <= 0.0) throw IllegalStateException("أدخل سعر صرف صحيحاً قبل تسجيل فاتورة بالليرة")
+                            val purchase = com.example.retailaccounting.data.Purchase(
+                                currency = money,
+                                exchangeRateAtPurchase = rate,
+                                total = total,
+                                supplierName = supplierName.ifBlank { null },
+                                invoiceNumber = invoiceNumber.text.toString().trim()
+                            )
+                            val accountMovement = if (isDebt) com.example.retailaccounting.data.AccountMovement(
+                                partyType = "SUPPLIER", partyName = supplierName, movementType = "PURCHASE_CREDIT",
+                                amount = total, currency = money, note = "فاتورة شراء آجلة"
+                            ) else null
+                            val cashMovement = if (!isDebt) com.example.retailaccounting.data.CashMovement(
+                                direction = "OUT", amount = total, currency = money, reason = "فاتورة شراء"
+                            ) else null
+                            dao.savePurchaseAndAddStock(purchase, drafts.toList(), accountMovement, cashMovement)
+                            Toast.makeText(this@MainActivity, "تم حفظ فاتورة الشراء وتحديث المخزون والحساب", Toast.LENGTH_LONG).show()
+                            dialog.dismiss()
+                        } catch (error: Exception) {
+                            Toast.makeText(this@MainActivity, error.message ?: "تعذر حفظ فاتورة الشراء", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }
+            }
+            dialog.show()
         }
     }
-
     private fun showAddProductDialog() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
