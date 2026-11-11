@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity() {
             text = "＋ تسجيل فاتورة شراء"
             setOnClickListener { showPurchaseDialog() }
         }
+        val saleButton = Button(this).apply { text = "＋ تسجيل فاتورة مبيع"; setOnClickListener { showSaleDialog() } }
         val section = TextView(this).apply {
             text = "الأصناف والمخزون"
             textSize = 20f
@@ -62,6 +63,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(subtitle)
         page.addView(addButton)
         page.addView(purchaseButton)
+        page.addView(saleButton)
         page.addView(section)
         page.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
@@ -99,6 +101,43 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+    private fun showSaleDialog() {
+        lifecycleScope.launch {
+            val products = dao.observeProducts().first()
+            if (products.isEmpty()) { Toast.makeText(this@MainActivity, "أضف صنفاً أولاً", Toast.LENGTH_LONG).show(); return@launch }
+            val box = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+            val spinner = Spinner(this@MainActivity).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, products.map { it.name }) }
+            fun field(label: String) = EditText(this@MainActivity).apply { hint = label; textSize = 16f }
+            val qty = field("الكمية المباعة").apply { inputType = 8194 }
+            val price = field("سعر بيع الوحدة").apply { inputType = 8194 }
+            val customer = field("اسم الزبون (اختياري)")
+            val payment = Spinner(this@MainActivity).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("نقدي", "آجل")) }
+            spinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: View?, position: Int, id: Long) { price.setText(products[position].salePrice.toString()) }
+            }
+            box.addView(spinner); box.addView(qty); box.addView(price); box.addView(customer); box.addView(payment)
+            val dialog = AlertDialog.Builder(this@MainActivity).setTitle("تسجيل فاتورة مبيع").setView(box).setNegativeButton("إلغاء", null).setPositiveButton("حفظ", null).create()
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val quantity = qty.text.toString().toDoubleOrNull()
+                    val salePrice = price.text.toString().toDoubleOrNull()
+                    if (quantity == null || quantity <= 0.0) { qty.error = "أدخل كمية صحيحة"; return@setOnClickListener }
+                    if (salePrice == null || salePrice < 0.0) { price.error = "أدخل سعراً صحيحاً"; return@setOnClickListener }
+                    val product = products[spinner.selectedItemPosition]
+                    val line = com.example.retailaccounting.domain.SaleCalculator.calculateLine(com.example.retailaccounting.domain.SaleLineInput(quantity, 1.0, salePrice, product.costPrice))
+                    val exchange = if (product.currency == "USD") 1.0 else (dao.getExchangeRate()?.usdToSyp ?: 1.0)
+                    val sale = com.example.retailaccounting.data.Sale(currency = product.currency, exchangeRateAtSale = exchange, subtotal = line.lineTotal, total = line.lineTotal, paymentType = if (payment.selectedItemPosition == 0) "CASH" else "DEBT", customerName = customer.text.toString().trim().ifBlank { null })
+                    val item = com.example.retailaccounting.data.SaleItem(saleId = 0, productId = product.id, productNameSnapshot = product.name, quantityInSelectedUnit = quantity, selectedUnit = product.baseUnit, baseUnitsPerSelectedUnit = 1.0, quantityInBaseUnit = line.quantityInBaseUnit, unitPrice = salePrice, unitCostSnapshot = product.costPrice, lineTotal = line.lineTotal)
+                    lifecycleScope.launch {
+                        try { dao.saveSaleAndDeductStock(sale, listOf(item)); Toast.makeText(this@MainActivity, "تم حفظ فاتورة المبيع وتحديث المخزون", Toast.LENGTH_LONG).show(); dialog.dismiss() }
+                        catch (error: Exception) { Toast.makeText(this@MainActivity, error.message ?: "تعذر حفظ الفاتورة", Toast.LENGTH_LONG).show() }
+                    }
+                }
+            }
+            dialog.show()
+        }
+    }
     private fun showPurchaseDialog() {
         lifecycleScope.launch {
             val products = dao.observeProducts().first()
