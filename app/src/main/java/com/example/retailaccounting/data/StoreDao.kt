@@ -93,6 +93,11 @@ abstract class StoreDao {
         require(movement.movementType in setOf("SALE_CREDIT", "PURCHASE_CREDIT", "PAYMENT", "ADJUSTMENT")) { "نوع الحركة غير صحيح" }
         require(movement.amount.isFinite() && movement.amount != 0.0) { "قيمة الحركة غير صحيحة" }
         require(movement.currency == "USD" || movement.currency == "SYP") { "العملة غير صحيحة" }
+        when (movement.movementType) {
+            "SALE_CREDIT" -> require(movement.partyType == "CUSTOMER" && movement.amount > 0.0) { "مديونية المبيع يجب أن تكون موجبة على الزبون" }
+            "PURCHASE_CREDIT" -> require(movement.partyType == "SUPPLIER" && movement.amount > 0.0) { "مديونية الشراء يجب أن تكون موجبة للمورد" }
+            "PAYMENT" -> require(movement.amount < 0.0) { "حركة التسديد يجب أن تكون سالبة" }
+        }
         return insertAccountMovement(movement)
     }
 
@@ -139,7 +144,9 @@ abstract class StoreDao {
 
     @Transaction
     open suspend fun recordExpenseAndCash(expense: Expense, movement: CashMovement): Long {
-        require(expense.amount > 0.0) { "قيمة المصروف يجب أن تكون أكبر من صفر" }
+        require(expense.amount.isFinite() && expense.amount > 0.0) { "قيمة المصروف يجب أن تكون أكبر من صفر" }
+        require(expense.currency == "USD" || expense.currency == "SYP") { "عملة المصروف غير صحيحة" }
+        require(movement.direction == "OUT" && movement.amount == expense.amount && movement.currency == expense.currency) { "حركة الصندوق لا تطابق المصروف" }
         val id = insertExpense(expense)
         insertCashMovement(movement)
         return id
