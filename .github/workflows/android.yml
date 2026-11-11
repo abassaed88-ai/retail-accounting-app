@@ -1,9 +1,9 @@
-name: Build Android APK
+name: Build Good Girl Android APK
 
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [ main, "goodgirl/**" ]
 
 permissions:
   contents: read
@@ -11,7 +11,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 30
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -20,20 +20,46 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: "17"
 
-      - name: Set up Gradle
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Install Android 35 SDK packages
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: "8.9"
 
-      - name: Build APK
-        run: gradle --no-daemon :app:assembleDebug
+      - name: Verify project structure
+        run: |
+          test -f app/src/main/AndroidManifest.xml
+          test -f app/src/main/java/com/example/retailaccounting/MainActivity.kt
+          test -f app/src/main/java/com/example/retailaccounting/data/AppDatabase.kt
+          test -f app/src/main/java/com/example/retailaccounting/data/Entities.kt
+          test -f app/src/main/java/com/example/retailaccounting/data/StoreDao.kt
 
-      - name: Upload APK
+      - name: Build debug APK and run unit tests
+        run: gradle --no-daemon clean :app:assembleDebug :app:testDebugUnitTest --stacktrace --console=plain
+
+      - name: Upload build log
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: retail-accounting-debug-apk
+          name: goodgirl-build-log
+          path: |
+            build.log
+            app/build/reports/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: GoodGirl-0.4.1-debug-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
