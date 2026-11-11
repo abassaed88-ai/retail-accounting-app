@@ -54,6 +54,9 @@ abstract class StoreDao {
     @Query("SELECT * FROM sales ORDER BY createdAt DESC")
     abstract fun observeSales(): Flow<List<Sale>>
 
+    @Query("SELECT * FROM sale_items ORDER BY id")
+    abstract fun observeSaleItems(): Flow<List<SaleItem>>
+
     @Insert
     abstract suspend fun insertCustomer(customer: Customer): Long
 
