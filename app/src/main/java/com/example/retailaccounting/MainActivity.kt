@@ -81,6 +81,7 @@ class MainActivity : AppCompatActivity() {
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
         ))
         setContentView(page)
+        showPasscodeGate()
 
         lifecycleScope.launch {
             dao.observeProducts().collectLatest { products -> renderProducts(products) }
@@ -113,6 +114,58 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+
+    private fun showPasscodeGate() {
+        val firstSetup = !com.example.retailaccounting.security.PasscodeStore.hasPasscode(this)
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 0)
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+        }
+        val code = EditText(this).apply {
+            hint = if (firstSetup) "أنشئ الرمز السري (4 أرقام على الأقل)" else "أدخل الرمز السري"
+            inputType = 18
+        }
+        val confirm = if (firstSetup) EditText(this).apply {
+            hint = "أعد إدخال الرمز السري"
+            inputType = 18
+        } else null
+        box.addView(code)
+        confirm?.let { box.addView(it) }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(if (firstSetup) "إنشاء رمز حماية Good Girl" else "التحقق من الرمز السري")
+            .setMessage(if (firstSetup) "احفظ الرمز في مكان آمن؛ ستحتاج إليه عند فتح التطبيق." else "أدخل رمز الحماية للمتابعة.")
+            .setView(box)
+            .setCancelable(false)
+            .setPositiveButton(if (firstSetup) "حفظ الرمز" else "دخول", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val value = code.text.toString()
+                if (value.length < 4 || value.any { it !in '0'..'9' }) {
+                    code.error = "استخدم 4 أرقام على الأقل"
+                    return@setOnClickListener
+                }
+                if (firstSetup) {
+                    if (confirm?.text?.toString() != value) {
+                        confirm?.error = "الرمزان غير متطابقين"
+                        return@setOnClickListener
+                    }
+                    com.example.retailaccounting.security.PasscodeStore.save(this, value)
+                    Toast.makeText(this, "تم إنشاء الرمز السري", Toast.LENGTH_LONG).show()
+                    dialog.dismiss()
+                } else {
+                    if (com.example.retailaccounting.security.PasscodeStore.verify(this, value)) {
+                        dialog.dismiss()
+                    } else {
+                        code.error = "الرمز غير صحيح"
+                        code.setText("")
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
 
     private fun showCashSummary() {
         lifecycleScope.launch {
