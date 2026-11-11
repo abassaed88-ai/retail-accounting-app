@@ -135,10 +135,25 @@ abstract class StoreDao {
         return purchaseId
     }
     @Transaction
-    open suspend fun saveSaleAndDeductStock(sale: Sale, items: List<SaleItem>): Long {
+    open suspend fun saveSaleAndDeductStock(
+        sale: Sale,
+        items: List<SaleItem>,
+        accountMovement: AccountMovement? = null,
+        cashMovement: CashMovement? = null
+    ): Long {
         require(items.isNotEmpty()) { "لا يمكن حفظ فاتورة فارغة" }
+        require(sale.total.isFinite() && sale.total >= 0.0) { "إجمالي الفاتورة غير صالح" }
+        if (sale.paymentType == "DEBT") {
+            require(accountMovement != null) { "يجب تسجيل مديونية الزبون مع البيع الآجل" }
+            require(accountMovement.partyType == "CUSTOMER" && accountMovement.movementType == "SALE_CREDIT") { "حركة حساب الزبون غير صحيحة" }
+            require(accountMovement.amount == sale.total && accountMovement.currency == sale.currency) { "قيمة مديونية الزبون لا تطابق الفاتورة" }
+            require(sale.customerName?.isNotBlank() == true && accountMovement.partyName == sale.customerName) { "اسم الزبون مطلوب للبيع الآجل" }
+        } else {
+            require(accountMovement == null) { "لا يجوز تسجيل مديونية لعملية نقدية" }
+            require(cashMovement != null && cashMovement.direction == "IN" && cashMovement.amount == sale.total && cashMovement.currency == sale.currency) { "حركة الصندوق النقدية غير مطابقة للفاتورة" }
+        }
         items.forEach { item ->
-            require(item.quantityInBaseUnit > 0.0) { "الكمية يجب أن تكون أكبر من صفر" }
+            require(item.quantityInBaseUnit.isFinite() && item.quantityInBaseUnit > 0.0) { "الكمية يجب أن تكون أكبر من صفر" }
             val product = getProduct(item.productId)
             require(product != null && product.isActive) {
                 "لا يمكن بيع صنف غير مسجل أو مؤرشف: ${item.productNameSnapshot}"
@@ -159,6 +174,8 @@ abstract class StoreDao {
                 referenceId = saleId
             ))
         }
+        accountMovement?.let { insertAccountMovement(it.copy(referenceId = saleId)) }
+        cashMovement?.let { insertCashMovement(it.copy(reason = "مبيع نقدي #${saleId}: ${it.reason}")) }
         return saleId
     }
 }
