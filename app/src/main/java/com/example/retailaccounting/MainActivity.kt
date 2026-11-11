@@ -55,6 +55,7 @@ class MainActivity : AppCompatActivity() {
         val paymentButton = Button(this).apply { text = "↔ تسجيل دفعة زبون / مورد"; setOnClickListener { showPartyPaymentDialog() } }
         val accountsButton = Button(this).apply { text = "▤ أرصدة الزبائن والموردين"; setOnClickListener { showAccountBalances() } }
         val exchangeButton = Button(this).apply { text = "سعر صرف الدولار"; setOnClickListener { showExchangeRateDialog() } }
+        val cashButton = Button(this).apply { text = "▣ حركة الصندوق والأرصدة"; setOnClickListener { showCashSummary() } }
         val section = TextView(this).apply {
             text = "الأصناف والمخزون"
             textSize = 20f
@@ -74,6 +75,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(paymentButton)
         page.addView(accountsButton)
         page.addView(exchangeButton)
+        page.addView(cashButton)
         page.addView(section)
         page.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
@@ -111,6 +113,32 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+
+    private fun showCashSummary() {
+        lifecycleScope.launch {
+            try {
+                val movements = dao.observeCashMovements().first()
+                val currencies = listOf("USD", "SYP")
+                val report = currencies.joinToString("\n\n") { currency ->
+                    val rows = movements.filter { it.currency == currency }
+                    val incoming = rows.filter { it.direction == "IN" }.sumOf { it.amount }
+                    val outgoing = rows.filter { it.direction == "OUT" }.sumOf { it.amount }
+                    "العملة: " + currency +
+                        "\nإجمالي المقبوضات: " + incoming +
+                        "\nإجمالي المدفوعات: " + outgoing +
+                        "\nصافي حركة الصندوق: " + (incoming - outgoing) +
+                        "\nعدد الحركات: " + rows.size
+                }
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("ملخص حركة الصندوق")
+                    .setMessage(report)
+                    .setPositiveButton("إغلاق", null)
+                    .show()
+            } catch (error: Exception) {
+                Toast.makeText(this@MainActivity, error.message ?: "تعذر إعداد ملخص الصندوق", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
 
     private fun showExchangeRateDialog() {
         val input = EditText(this).apply {
