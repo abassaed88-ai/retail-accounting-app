@@ -294,6 +294,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         val product = Product(
                             name = productName,
+                            code = code.text.toString().trim(),
                             category = category.text.toString().trim(),
                             baseUnit = unit.text.toString().trim().ifBlank { "قطعة" },
                             quantity = quantity.text.toString().toDoubleOrNull() ?: 0.0,
