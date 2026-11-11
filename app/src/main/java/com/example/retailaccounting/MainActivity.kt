@@ -54,6 +54,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var list: LinearLayout
+    private lateinit var searchInput: EditText
+    private var productCache: List<Product> = emptyList()
     private lateinit var dao: com.example.retailaccounting.data.StoreDao
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -104,6 +106,17 @@ class MainActivity : AppCompatActivity() {
             setTextColor(0xFF351052.toInt())
             setPadding(4, 22, 4, 10)
         }
+        searchInput = EditText(this).apply {
+            hint = "بحث باسم الصنف أو الرمز أو التصنيف"
+            textSize = 15f
+            singleLine = true
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { renderProducts(productCache) }
+                override fun afterTextChanged(s: android.text.Editable?) {}
+            })
+        }
         list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         val scroll = ScrollView(this).apply { addView(list) }
 
@@ -123,6 +136,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(restoreButton)
         page.addView(archivedButton)
         page.addView(section)
+        page.addView(searchInput)
         page.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
         ))
@@ -135,15 +149,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun renderProducts(products: List<Product>) {
+        productCache = products
+        val query = if (::searchInput.isInitialized) searchInput.text.toString().trim() else ""
+        val visibleProducts = if (query.isBlank()) products else products.filter {
+            it.name.contains(query, ignoreCase = true) || it.code.contains(query, ignoreCase = true) || it.category.contains(query, ignoreCase = true)
+        }
         list.removeAllViews()
-        if (products.isEmpty()) {
+        if (visibleProducts.isEmpty()) {
             list.addView(TextView(this).apply {
-                text = "لا توجد أصناف بعد. اضغط «إضافة صنف جديد» للبدء."
+                text = if (query.isBlank()) "لا توجد أصناف بعد. اضغط «إضافة صنف جديد» للبدء." else "لا توجد نتائج مطابقة للبحث."
                 textSize = 16f
                 setPadding(12, 20, 12, 20)
             })
         }
-        products.forEach { product ->
+        visibleProducts.forEach { product ->
             val row = TextView(this).apply {
                 text = "${product.name}\nالكمية: ${product.quantity} ${product.baseUnit}   |   " +
                     "سعر البيع: ${product.salePrice} ${product.currency}"
@@ -156,7 +175,8 @@ class MainActivity : AppCompatActivity() {
                 AlertDialog.Builder(this)
                     .setTitle(product.name)
                     .setMessage("رمز الصنف: " + product.code + "\nالتصنيف: " + product.category + "\nالكمية: " + product.quantity + " " + product.baseUnit)
-                    .setPositiveButton("أرشفة الصنف") { _, _ ->
+                    .setPositiveButton("تعديل البيانات") { _, _ -> showEditProductDialog(product) }
+                    .setNeutralButton("أرشفة الصنف") { _, _ ->
                         lifecycleScope.launch {
                             dao.archiveProduct(product.id)
                             Toast.makeText(this@MainActivity, "تمت أرشفة الصنف مع الحفاظ على فواتيره وحركاته", Toast.LENGTH_LONG).show()
@@ -726,6 +746,72 @@ class MainActivity : AppCompatActivity() {
             dialog.show()
         }
     }
+    private fun showEditProductDialog(product: Product) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 0)
+            layoutDirection = ViewGroup.LAYOUT_DIRECTION_RTL
+        }
+        fun field(label: String, value: String, numeric: Boolean = false): EditText {
+            return EditText(this).apply {
+                hint = label
+                setText(value)
+                textSize = 16f
+                if (numeric) inputType = 8194
+            }
+        }
+        val name = field("اسم الصنف", product.name)
+        val code = field("رمز الصنف", product.code)
+        val category = field("التصنيف", product.category)
+        val unit = field("وحدة القياس", product.baseUnit)
+        val quantity = field("الكمية الحالية", product.quantity.toString(), true)
+        val cost = field("كلفة الوحدة الحالية", product.costPrice.toString(), true)
+        val price = field("سعر البيع الحالي", product.salePrice.toString(), true)
+        val currency = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("USD", "SYP"))
+            setSelection(if (product.currency == "SYP") 1 else 0)
+        }
+        listOf(name, code, category, unit, quantity, cost, price).forEach { box.addView(it) }
+        box.addView(currency)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("تعديل بيانات الصنف")
+            .setView(ScrollView(this).apply { addView(box) })
+            .setNegativeButton("إلغاء", null)
+            .setPositiveButton("حفظ التعديلات", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val n = name.text.toString().trim()
+                val q = quantity.text.toString().toDoubleOrNull()
+                val cp = cost.text.toString().toDoubleOrNull()
+                val sp = price.text.toString().toDoubleOrNull()
+                if (n.isBlank()) { name.error = "اسم الصنف مطلوب"; return@setOnClickListener }
+                if (q == null || !q.isFinite()) { quantity.error = "أدخل كمية صحيحة"; return@setOnClickListener }
+                if (cp == null || !cp.isFinite() || cp < 0.0) { cost.error = "أدخل كلفة صحيحة"; return@setOnClickListener }
+                if (sp == null || !sp.isFinite() || sp < 0.0) { price.error = "أدخل سعراً صحيحاً"; return@setOnClickListener }
+                lifecycleScope.launch {
+                    try {
+                        dao.updateProduct(product.copy(
+                            name = n,
+                            code = code.text.toString().trim(),
+                            category = category.text.toString().trim(),
+                            baseUnit = unit.text.toString().trim().ifBlank { "قطعة" },
+                            quantity = q,
+                            costPrice = cp,
+                            salePrice = sp,
+                            currency = currency.selectedItem.toString()
+                        ))
+                        Toast.makeText(this@MainActivity, "تم تحديث بيانات الصنف؛ أرباح الفواتير السابقة محفوظة كما هي", Toast.LENGTH_LONG).show()
+                        dialog.dismiss()
+                    } catch (error: Exception) {
+                        Toast.makeText(this@MainActivity, error.message ?: "تعذر تعديل الصنف", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
     private fun showAddProductDialog() {
         val box = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
