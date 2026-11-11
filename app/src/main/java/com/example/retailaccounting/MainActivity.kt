@@ -230,7 +230,8 @@ class MainActivity : AppCompatActivity() {
                     val line = com.example.retailaccounting.domain.SaleCalculator.calculateLine(com.example.retailaccounting.domain.SaleLineInput(quantity, 1.0, salePrice, product.costPrice))
                     lifecycleScope.launch {
                         try {
-                            val exchange = if (product.currency == "USD") 1.0 else (dao.getExchangeRate()?.usdToSyp ?: 1.0)
+                            val exchange = if (product.currency == "USD") 1.0 else (dao.getExchangeRate()?.usdToSyp ?: 0.0)
+                            if (!exchange.isFinite() || exchange <= 0.0) throw IllegalStateException("أدخل سعر صرف صحيحاً قبل تسجيل المبيع بالليرة")
                             val sale = com.example.retailaccounting.data.Sale(currency = product.currency, exchangeRateAtSale = exchange, subtotal = line.lineTotal, total = line.lineTotal, paymentType = if (payment.selectedItemPosition == 0) "CASH" else "DEBT", customerName = customerName.ifBlank { null })
                             val item = com.example.retailaccounting.data.SaleItem(saleId = 0, productId = product.id, productNameSnapshot = product.name, quantityInSelectedUnit = quantity, selectedUnit = product.baseUnit, baseUnitsPerSelectedUnit = 1.0, quantityInBaseUnit = line.quantityInBaseUnit, unitPrice = salePrice, unitCostSnapshot = product.costPrice, lineTotal = line.lineTotal)
                             val accountMovement = if (sale.paymentType == "DEBT") {
