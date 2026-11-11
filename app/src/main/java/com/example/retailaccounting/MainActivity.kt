@@ -51,7 +51,7 @@ class MainActivity : AppCompatActivity() {
         }
         val saleButton = Button(this).apply { text = "＋ تسجيل فاتورة مبيع"; setOnClickListener { showSaleDialog() } }
         val expenseButton = Button(this).apply { text = "－ تسجيل مصروف"; setOnClickListener { showExpenseDialog() } }
-        val reportButton = Button(this).apply { text = "▤ تقرير اليوم"; setOnClickListener { showDailyReport() } }
+        val reportButton = Button(this).apply { text = "▤ التقارير اليومية والأسبوعية والشهرية والسنوية"; setOnClickListener { showReportPeriod() } }
         val paymentButton = Button(this).apply { text = "↔ تسجيل دفعة زبون / مورد"; setOnClickListener { showPartyPaymentDialog() } }
         val accountsButton = Button(this).apply { text = "▤ أرصدة الزبائن والموردين"; setOnClickListener { showAccountBalances() } }
         val exchangeButton = Button(this).apply { text = "سعر صرف الدولار"; setOnClickListener { showExchangeRateDialog() } }
@@ -195,20 +195,65 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showDailyReport() {
-        lifecycleScope.launch {
-            try {
-                val start = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0) }
-                val end = (start.clone() as java.util.Calendar).apply { add(java.util.Calendar.DAY_OF_YEAR, 1) }
-                val sales = dao.observeSales().first()
-                val items = dao.observeSaleItems().first()
-                val expenses = dao.observeExpenses().first()
-                val usd = com.example.retailaccounting.domain.ReportCalculator.calculate(sales, items, expenses, start.timeInMillis, end.timeInMillis, "USD")
-                val syp = com.example.retailaccounting.domain.ReportCalculator.calculate(sales, items, expenses, start.timeInMillis, end.timeInMillis, "SYP")
-                val report = "تقرير اليوم\\n\\nالدولار USD\\nالمبيعات: ${usd.sales}\\nكلفة البضاعة: ${usd.costOfGoods}\\nالربح الإجمالي: ${usd.grossProfit}\\nالمصروفات: ${usd.expenses}\\nصافي الربح: ${usd.netProfit}\\nعدد الفواتير: ${usd.salesCount}\\n\\nالليرة SYP\\nالمبيعات: ${syp.sales}\\nكلفة البضاعة: ${syp.costOfGoods}\\nالربح الإجمالي: ${syp.grossProfit}\\nالمصروفات: ${syp.expenses}\\nصافي الربح: ${syp.netProfit}\\nعدد الفواتير: ${syp.salesCount}"
-                AlertDialog.Builder(this@MainActivity).setTitle("ملخص المبيعات والأرباح").setMessage(report).setPositiveButton("إغلاق", null).show()
-            } catch (error: Exception) { Toast.makeText(this@MainActivity, error.message ?: "تعذر إعداد التقرير", Toast.LENGTH_LONG).show() }
-        }
+    private fun showReportPeriod() {
+        val periods = listOf("اليوم", "هذا الأسبوع", "هذا الشهر", "هذه السنة")
+        AlertDialog.Builder(this)
+            .setTitle("اختر فترة التقرير")
+            .setItems(periods.toTypedArray()) { _, which ->
+                lifecycleScope.launch {
+                    try {
+                        val start = java.util.Calendar.getInstance()
+                        when (which) {
+                            0 -> {
+                                start.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                                start.set(java.util.Calendar.MINUTE, 0)
+                                start.set(java.util.Calendar.SECOND, 0)
+                                start.set(java.util.Calendar.MILLISECOND, 0)
+                            }
+                            1 -> {
+                                start.set(java.util.Calendar.DAY_OF_WEEK, start.firstDayOfWeek)
+                                start.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                                start.set(java.util.Calendar.MINUTE, 0)
+                                start.set(java.util.Calendar.SECOND, 0)
+                                start.set(java.util.Calendar.MILLISECOND, 0)
+                            }
+                            2 -> {
+                                start.set(java.util.Calendar.DAY_OF_MONTH, 1)
+                                start.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                                start.set(java.util.Calendar.MINUTE, 0)
+                                start.set(java.util.Calendar.SECOND, 0)
+                                start.set(java.util.Calendar.MILLISECOND, 0)
+                            }
+                            3 -> {
+                                start.set(java.util.Calendar.DAY_OF_YEAR, 1)
+                                start.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                                start.set(java.util.Calendar.MINUTE, 0)
+                                start.set(java.util.Calendar.SECOND, 0)
+                                start.set(java.util.Calendar.MILLISECOND, 0)
+                            }
+                        }
+                        val end = (start.clone() as java.util.Calendar).apply { add(java.util.Calendar.DAY_OF_YEAR, if (which == 0) 1 else 0) }
+                        if (which != 0) {
+                            when (which) {
+                                1 -> end.add(java.util.Calendar.WEEK_OF_YEAR, 1)
+                                2 -> end.add(java.util.Calendar.MONTH, 1)
+                                3 -> end.add(java.util.Calendar.YEAR, 1)
+                            }
+                        }
+                        val sales = dao.observeSales().first()
+                        val items = dao.observeSaleItems().first()
+                        val expenses = dao.observeExpenses().first()
+                        val usd = com.example.retailaccounting.domain.ReportCalculator.calculate(sales, items, expenses, start.timeInMillis, end.timeInMillis, "USD")
+                        val syp = com.example.retailaccounting.domain.ReportCalculator.calculate(sales, items, expenses, start.timeInMillis, end.timeInMillis, "SYP")
+                        val report = "الفترة: " + periods[which] + "\n\nالدولار USD\nالمبيعات: " + usd.sales + "\nكلفة البضاعة: " + usd.costOfGoods + "\nالربح الإجمالي: " + usd.grossProfit + "\nالمصروفات: " + usd.expenses + "\nصافي الربح: " + usd.netProfit + "\nعدد الفواتير: " + usd.salesCount + "\n\nالليرة SYP\nالمبيعات: " + syp.sales + "\nكلفة البضاعة: " + syp.costOfGoods + "\nالربح الإجمالي: " + syp.grossProfit + "\nالمصروفات: " + syp.expenses + "\nصافي الربح: " + syp.netProfit + "\nعدد الفواتير: " + syp.salesCount
+                        AlertDialog.Builder(this@MainActivity).setTitle("ملخص المبيعات والأرباح").setMessage(report).setPositiveButton("إغلاق", null).show()
+                    } catch (error: Exception) {
+                        Toast.makeText(this@MainActivity, error.message ?: "تعذر إعداد التقرير", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+            .setNegativeButton("إلغاء", null)
+            .show()
     }
     private fun showExpenseDialog() {
         val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
