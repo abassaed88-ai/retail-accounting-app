@@ -13,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         Customer::class, Supplier::class, Expense::class, CashMovement::class,
         Purchase::class, PurchaseItem::class, StockMovement::class, AccountMovement::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -37,6 +37,11 @@ abstract class AppDatabase : RoomDatabase() {
                 db.execSQL("CREATE TABLE IF NOT EXISTS account_movements (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, partyType TEXT NOT NULL, partyName TEXT NOT NULL, movementType TEXT NOT NULL, amount REAL NOT NULL, currency TEXT NOT NULL, referenceId INTEGER, createdAt INTEGER NOT NULL, note TEXT NOT NULL)")
             }
         }
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE cash_movements ADD COLUMN referenceId INTEGER")
+            }
+        }
         @Volatile private var INSTANCE: AppDatabase? = null
 
         fun getInstance(context: Context): AppDatabase =
@@ -47,7 +52,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "retail_accounting.db"
                 )
                     // No destructive fallback: never erase a shop's ledger silently.
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                     .build()
                     .also { INSTANCE = it }
             }
