@@ -128,3 +128,16 @@ data class StockMovement(
     val createdAt: Long = System.currentTimeMillis(),
     val note: String = ""
 )
+
+@Entity(tableName = "account_movements")
+data class AccountMovement(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val partyType: String,
+    val partyName: String,
+    val movementType: String,
+    val amount: Double,
+    val currency: String,
+    val referenceId: Long? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val note: String = ""
+)
