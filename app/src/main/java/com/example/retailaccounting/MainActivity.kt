@@ -109,7 +109,7 @@ class MainActivity : AppCompatActivity() {
         searchInput = EditText(this).apply {
             hint = "بحث باسم الصنف أو الرمز أو التصنيف"
             textSize = 15f
-            singleLine = true
+            maxLines = 1
             layoutDirection = View.LAYOUT_DIRECTION_RTL
             addTextChangedListener(object : android.text.TextWatcher {
                 override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
