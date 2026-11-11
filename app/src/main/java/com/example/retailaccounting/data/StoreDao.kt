@@ -55,10 +55,16 @@ abstract class StoreDao {
     @Query("SELECT * FROM purchases ORDER BY createdAt DESC")
     abstract fun observePurchases(): Flow<List<Purchase>>
 
+    @Query("SELECT * FROM purchase_items WHERE purchaseId = :purchaseId ORDER BY id")
+    abstract suspend fun getPurchaseItems(purchaseId: Long): List<PurchaseItem>
+
     @Query("SELECT * FROM stock_movements WHERE productId = :productId ORDER BY createdAt DESC")
     abstract fun observeStockMovements(productId: Long): Flow<List<StockMovement>>
     @Query("SELECT * FROM sales ORDER BY createdAt DESC")
     abstract fun observeSales(): Flow<List<Sale>>
+
+    @Query("SELECT * FROM sale_items WHERE saleId = :saleId ORDER BY id")
+    abstract suspend fun getSaleItems(saleId: Long): List<SaleItem>
 
     @Query("SELECT * FROM sale_items ORDER BY id")
     abstract fun observeSaleItems(): Flow<List<SaleItem>>
