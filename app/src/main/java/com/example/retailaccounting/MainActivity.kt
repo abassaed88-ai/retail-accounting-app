@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.retailaccounting.data.AppDatabase
 import com.example.retailaccounting.data.Product
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -44,6 +45,10 @@ class MainActivity : AppCompatActivity() {
             text = "＋ إضافة صنف جديد"
             setOnClickListener { showAddProductDialog() }
         }
+        val purchaseButton = Button(this).apply {
+            text = "＋ تسجيل فاتورة شراء"
+            setOnClickListener { showPurchaseDialog() }
+        }
         val section = TextView(this).apply {
             text = "الأصناف والمخزون"
             textSize = 20f
@@ -56,6 +61,7 @@ class MainActivity : AppCompatActivity() {
         page.addView(title)
         page.addView(subtitle)
         page.addView(addButton)
+        page.addView(purchaseButton)
         page.addView(section)
         page.addView(scroll, LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
@@ -89,6 +95,92 @@ class MainActivity : AppCompatActivity() {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = 10 }
             list.addView(row, params)
+        }
+    }
+
+
+    private fun showPurchaseDialog() {
+        lifecycleScope.launch {
+            val products = dao.observeProducts().first()
+            if (products.isEmpty()) {
+                Toast.makeText(this@MainActivity, "أضف صنفاً أولاً قبل تسجيل الشراء", Toast.LENGTH_LONG).show()
+                return@launch
+            }
+            val box = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(24, 8, 24, 0)
+                layoutDirection = View.LAYOUT_DIRECTION_RTL
+            }
+            fun field(label: String): EditText = EditText(this@MainActivity).apply {
+                hint = label
+                textSize = 16f
+            }
+            val productSpinner = Spinner(this@MainActivity).apply {
+                adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, products.map { it.name })
+            }
+            val quantity = field("الكمية المشتراة").apply { inputType = 8194 }
+            val unitCost = field("كلفة الوحدة الجديدة").apply { inputType = 8194 }
+            val supplier = field("اسم المورد (اختياري)")
+            val invoiceNumber = field("رقم الفاتورة (اختياري)")
+            val currency = Spinner(this@MainActivity).apply {
+                adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("USD", "SYP"))
+            }
+            box.addView(productSpinner)
+            box.addView(quantity)
+            box.addView(unitCost)
+            box.addView(supplier)
+            box.addView(invoiceNumber)
+            box.addView(currency)
+            AlertDialog.Builder(this@MainActivity)
+                .setTitle("تسجيل فاتورة شراء")
+                .setView(box)
+                .setNegativeButton("إلغاء", null)
+                .setPositiveButton("حفظ", null)
+                .create().also { dialog ->
+                    dialog.setOnShowListener {
+                        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                            val qty = quantity.text.toString().toDoubleOrNull()
+                            val cost = unitCost.text.toString().toDoubleOrNull()
+                            if (qty == null || qty <= 0.0) {
+                                quantity.error = "أدخل كمية أكبر من صفر"
+                                return@setOnClickListener
+                            }
+                            if (cost == null || cost < 0.0) {
+                                unitCost.error = "أدخل كلفة صحيحة"
+                                return@setOnClickListener
+                            }
+                            val product = products[productSpinner.selectedItemPosition]
+                            val money = currency.selectedItem.toString()
+                            val total = qty * cost
+                            lifecycleScope.launch {
+                                try {
+                                    val rate = if (money == "USD") 1.0 else (dao.getExchangeRate()?.usdToSyp ?: 1.0)
+                                    val purchase = com.example.retailaccounting.data.Purchase(
+                                        currency = money,
+                                        exchangeRateAtPurchase = rate,
+                                        total = total,
+                                        supplierName = supplier.text.toString().trim().ifBlank { null },
+                                        invoiceNumber = invoiceNumber.text.toString().trim()
+                                    )
+                                    val item = com.example.retailaccounting.data.PurchaseItem(
+                                        purchaseId = 0,
+                                        productId = product.id,
+                                        productNameSnapshot = product.name,
+                                        quantityInBaseUnit = qty,
+                                        unitCostSnapshot = cost,
+                                        lineTotal = total
+                                    )
+                                    dao.savePurchaseAndAddStock(purchase, listOf(item))
+                                    Toast.makeText(this@MainActivity, "تم حفظ فاتورة الشراء وتحديث المخزون", Toast.LENGTH_LONG).show()
+                                    dialog.dismiss()
+                                } catch (error: Exception) {
+                                    Toast.makeText(this@MainActivity, error.message ?: "تعذر حفظ الفاتورة", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        }
+                    }
+                    dialog.show()
+                }
         }
     }
 
