@@ -18,6 +18,9 @@ abstract class StoreDao {
     @Insert
     abstract suspend fun insertProduct(product: Product): Long
 
+    @androidx.room.Update
+    abstract suspend fun updateProduct(product: Product): Int
+
     @Query("UPDATE products SET isActive = 0 WHERE id = :productId")
     abstract suspend fun archiveProduct(productId: Long): Int
 
