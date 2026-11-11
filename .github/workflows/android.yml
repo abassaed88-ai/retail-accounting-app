@@ -42,13 +42,15 @@ jobs:
           test -f app/src/main/java/com/example/retailaccounting/data/StoreDao.kt
 
       - name: Build debug APK and run unit tests
-        run: gradle --no-daemon clean :app:assembleDebug :app:testDebugUnitTest --stacktrace --console=plain
+        run: |
+          set -o pipefail
+          gradle --no-daemon clean :app:assembleDebug :app:testDebugUnitTest --stacktrace --console=plain 2>&1 | tee build.log
 
-      - name: Upload build log
+      - name: Upload build log and reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: goodgirl-build-log
+          name: goodgirl-build-diagnostics
           path: |
             build.log
             app/build/reports/
