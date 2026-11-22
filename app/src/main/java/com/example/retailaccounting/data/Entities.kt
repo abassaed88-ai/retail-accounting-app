@@ -146,3 +146,10 @@ data class ProfitSummary(
     val cost: Double,
     val expenses: Double
 )
+
+
+@Entity(tableName = "sales_returns")
+data class SalesReturn(@PrimaryKey(autoGenerate = true) val id: Long = 0, val saleId: Long, val currency: String, val total: Double, val reason: String = "", val createdAt: Long = System.currentTimeMillis())
+
+@Entity(tableName = "sales_return_items")
+data class SalesReturnItem(@PrimaryKey(autoGenerate = true) val id: Long = 0, val returnId: Long, val saleItemId: Long, val productId: Long, val productNameSnapshot: String, val quantityInBaseUnit: Double, val unitPrice: Double, val lineTotal: Double)
