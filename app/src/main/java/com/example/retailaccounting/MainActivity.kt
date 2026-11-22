@@ -224,10 +224,30 @@ class MainActivity : AppCompatActivity() {
         card("الإيرادات الأخرى", "+") { info("الإيرادات", "تسجيل الإيرادات غير الناتجة عن المبيعات.") }
     }
 
+
+    private fun showProfitReport() {
+        lifecycleScope.launch {
+            try {
+                val summaries = dao.getProfitSummary()
+                if (summaries.isEmpty()) {
+                    info("الأرباح والخسائر", "لا توجد مبيعات مسجلة بعد.")
+                    return@launch
+                }
+                val report = summaries.joinToString("\\n\\n") { item ->
+                    val profit = item.revenue - item.cost
+                    "العملة: ${item.currency}\\nإجمالي المبيعات: ${item.revenue}\\nكلفة البضاعة المباعة: ${item.cost}\\nمجمل الربح: $profit"
+                }
+                info("مجمل الأرباح حسب العملة", "$report\\n\\nملاحظة: هذا مجمل الربح قبل خصم المصاريف التشغيلية والالتزامات.")
+            } catch (e: Exception) {
+                info("الأرباح والخسائر", e.message ?: "تعذر حساب الأرباح.")
+            }
+        }
+    }
+
     private fun showReports() {
         content.removeAllViews(); section("التقارير")
         card("ملخص الحركة اليومية", "▤") { info("الحركة اليومية", "ملخص المبيعات والمشتريات وحركة الصندوق.") }
-        card("الأرباح والخسائر", "⌁") { info("الأرباح والخسائر", "يعتمد التقرير على كلفة المادة المحفوظة وقت البيع.") }
+        card("الأرباح والخسائر", "⌁") { showProfitReport() }
         card("رأس المال والموجودات", "◉") { info("رأس المال", "قيمة المخزون والصندوق والالتزامات.") }
         card("المواد الأكثر والأقل حركة", "▥") { info("حركة المواد", "ترتيب المواد حسب المبيعات خلال فترة محددة.") }
     }
