@@ -139,7 +139,7 @@ class MainActivity : AppCompatActivity() {
             textSize = 23f
             gravity = Gravity.CENTER
             setTextColor(blue)
-            background = android.graphics.drawable.GradientDrawable().apply {
+            this.background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(0xFFEAF3F6.toInt())
                 cornerRadius = 16f
             }
