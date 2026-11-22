@@ -117,6 +117,12 @@ data class PurchaseItem(
     val lineTotal: Double
 )
 
+@Entity(tableName = "purchase_returns")
+data class PurchaseReturn(@PrimaryKey(autoGenerate = true) val id: Long = 0, val purchaseId: Long, val currency: String, val total: Double, val reason: String = "", val createdAt: Long = System.currentTimeMillis())
+
+@Entity(tableName = "purchase_return_items")
+data class PurchaseReturnItem(@PrimaryKey(autoGenerate = true) val id: Long = 0, val returnId: Long, val purchaseItemId: Long, val productId: Long, val productNameSnapshot: String, val quantity: Double, val unitCost: Double, val lineTotal: Double)
+
 @Entity(tableName = "party_transactions")
 data class PartyTransaction(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
