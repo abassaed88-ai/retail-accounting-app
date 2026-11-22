@@ -275,9 +275,9 @@ class MainActivity : AppCompatActivity() {
                 }
                 val report = summaries.joinToString("\n\n") { item ->
                     val profit = item.revenue - item.cost
-                    "العملة: ${item.currency}\nإجمالي المبيعات: ${item.revenue}\nكلفة البضاعة المباعة: ${item.cost}\nمجمل الربح: $profit"
+                    "العملة: ${item.currency}\nإجمالي المبيعات: ${item.revenue}\nكلفة البضاعة المباعة: ${item.cost}\nمجمل الربح: $profit\nالمصاريف المسجلة: ${item.expenses}\nصافي الربح التقديري: ${profit - item.expenses}"
                 }
-                info("مجمل الأرباح حسب العملة", "$report\n\nملاحظة: صافي الربح هنا بعد خصم المصاريف المسجلة فقط، ولا يشمل أي مصاريف أو التزامات لم تُسجل.")
+                info("الأرباح والخسائر حسب العملة", "$report\n\nملاحظة: صافي الربح تقديري بعد خصم المصاريف المسجلة فقط، ولا يشمل أي مصاريف أو التزامات غير مسجلة.")
             } catch (e: Exception) {
                 info("الأرباح والخسائر", e.message ?: "تعذر حساب الأرباح.")
             }
