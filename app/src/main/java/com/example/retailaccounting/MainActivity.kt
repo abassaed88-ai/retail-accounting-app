@@ -187,6 +187,7 @@ class MainActivity : AppCompatActivity() {
         card("سجل الفواتير السابقة", "▤") { showInvoiceHistory() }
         card("المرتجعات", "↩") { info("المرتجعات", "إدارة مرتجعات البيع والشراء.") }
         card("عروض الأسعار وطلبات الشراء", "◆") { info("العروض والطلبات", "تظهر ضمن القوائم الفرعية.") }
+        card("مرتجعات المبيعات", "↩") { createSalesReturn() }
     }
 
 
@@ -787,6 +788,51 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             dialog.show()
+        }
+    }
+
+    private fun createSalesReturn() {
+        lifecycleScope.launch {
+            try {
+                val sales = dao.observeSales().first()
+                if (sales.isEmpty()) { info("مرتجع مبيع", "لا توجد فواتير مبيعات سابقة."); return@launch }
+                val labels = sales.map { "فاتورة #${it.id} — ${it.total} ${it.currency} — ${java.text.SimpleDateFormat("yyyy/MM/dd", java.util.Locale.US).format(java.util.Date(it.createdAt))}" }
+                val picker = Spinner(this@MainActivity).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, labels) }
+                AlertDialog.Builder(this@MainActivity).setTitle("اختيار فاتورة المبيع").setView(picker).setNegativeButton("إلغاء", null)
+                    .setPositiveButton("متابعة") { _, _ -> lifecycleScope.launch {
+                        val sale = sales[picker.selectedItemPosition]
+                        val items = dao.getSaleItems(sale.id)
+                        val box = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+                        val inputs = items.map { item ->
+                            box.addView(label("${item.productNameSnapshot} — الكمية الأصلية: ${item.quantityInBaseUnit} — المرتجع سابقاً: ${dao.getReturnedQuantity(item.id)}", 14f, ink, true))
+                            EditText(this@MainActivity).apply { hint = "الكمية المرتجعة"; inputType = 8194 }.also { box.addView(it) }
+                        }
+                        val reason = EditText(this@MainActivity).apply { hint = "سبب المرتجع (اختياري)" }; box.addView(reason)
+                        val dialog = AlertDialog.Builder(this@MainActivity).setTitle("تفاصيل المرتجع").setView(ScrollView(this@MainActivity).apply { addView(box) }).setNegativeButton("إلغاء", null).setPositiveButton("حفظ المرتجع", null).create()
+                        dialog.setOnShowListener {
+                            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                                val chosen = mutableListOf<Pair<SaleItem, Double>>()
+                                items.forEachIndexed { i, item ->
+                                    val raw = inputs[i].text.toString().trim()
+                                    if (raw.isNotEmpty()) {
+                                        val qty = raw.toDoubleOrNull()
+                                        if (qty == null || qty <= 0.0) { inputs[i].error = "أدخل كمية صحيحة"; return@setOnClickListener }
+                                        chosen.add(item to qty)
+                                    }
+                                }
+                                if (chosen.isEmpty()) { info("مرتجع مبيع", "أدخل كمية مرتجعة لمادة واحدة على الأقل."); return@setOnClickListener }
+                                lifecycleScope.launch {
+                                    try {
+                                        val id = dao.saveSalesReturn(sale.id, chosen, reason.text.toString().trim())
+                                        dialog.dismiss()
+                                        info("تم حفظ المرتجع", "رقم المرتجع: $id\nتم تحديث المخزون والحسابات وفق طريقة دفع الفاتورة.")
+                                    } catch (e: Exception) { info("تعذر حفظ المرتجع", e.message ?: "تحقق من الكميات المدخلة.") }
+                                }
+                            }
+                        }
+                        dialog.show()
+                    } }.show()
+            } catch (e: Exception) { info("مرتجع مبيع", e.message ?: "تعذر تحميل الفواتير.") }
         }
     }
 
