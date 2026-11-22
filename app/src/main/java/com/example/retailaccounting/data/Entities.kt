@@ -117,5 +117,6 @@ data class PurchaseItem(
 data class ProfitSummary(
     val currency: String,
     val revenue: Double,
-    val cost: Double
+    val cost: Double,
+    val expenses: Double
 )
