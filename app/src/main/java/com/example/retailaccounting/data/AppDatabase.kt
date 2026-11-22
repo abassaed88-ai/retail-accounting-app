@@ -9,11 +9,11 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [
-        Product::class, ExchangeRate::class, Sale::class, SaleItem::class,
+        Product::class, ExchangeRate::class, Sale::class, SaleItem::class, SalesReturn::class, SalesReturnItem::class,
         Customer::class, Supplier::class, Expense::class, CashMovement::class,
         Purchase::class, PurchaseItem::class, PartyTransaction::class, InventoryMovement::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -48,6 +48,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE TABLE IF NOT EXISTS sales_returns (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, saleId INTEGER NOT NULL, currency TEXT NOT NULL, total REAL NOT NULL, reason TEXT NOT NULL, createdAt INTEGER NOT NULL)")
+                database.execSQL("CREATE TABLE IF NOT EXISTS sales_return_items (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, returnId INTEGER NOT NULL, saleItemId INTEGER NOT NULL, productId INTEGER NOT NULL, productNameSnapshot TEXT NOT NULL, quantityInBaseUnit REAL NOT NULL, unitPrice REAL NOT NULL, lineTotal REAL NOT NULL)")
+            }
+        }
         @Volatile private var INSTANCE: AppDatabase? = null
 
         fun getInstance(context: Context): AppDatabase =
@@ -60,7 +66,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // v0.2 is an early prototype. Destructive migration is acceptable only
                     // before real business data is entered; add explicit migrations before release.
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     .build()
                     .also { INSTANCE = it }
             }
