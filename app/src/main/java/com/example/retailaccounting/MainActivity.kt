@@ -258,10 +258,56 @@ class MainActivity : AppCompatActivity() {
     private fun showAccounts() {
         content.removeAllViews(); section("الحسابات والصندوق")
         card("حركة الصندوق", "▣") { showCashbox() }
-        card("الديون والحسابات", "♙") { info("الحسابات", "قوائم العملاء والموردين وأرصدتهم.") }
-        card("قبض من حساب / دفع لحساب", "⇄") { info("القبض والدفع", "تسجيل الحركات وربطها برصيد الحساب.") }
+        card("الديون والحسابات", "♙") { info("الحسابات", "قوائم العملاء والموردين وأرصدتهم. ربط الأرصدة بالحركات قيد الاستكمال.") }
+        card("حركة قبض أو دفع نقدية أخرى", "⇄") { createOtherCashMovement() }
         card("تسجيل المصاريف", "−") { createExpense() }
-        card("الإيرادات الأخرى", "+") { info("الإيرادات", "تسجيل الإيرادات غير الناتجة عن المبيعات.") }
+        card("الإيرادات الأخرى", "+") { createOtherCashMovement(defaultDirection = "IN") }
+    }
+
+    private fun createOtherCashMovement(defaultDirection: String? = null) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 0)
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+        }
+        val reason = EditText(this).apply { hint = "بيان الحركة" }
+        val amount = EditText(this).apply { hint = "المبلغ"; inputType = 8194 }
+        val direction = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("قبض", "دفع"))
+            setSelection(if (defaultDirection == "IN") 0 else 1)
+            isEnabled = defaultDirection == null
+        }
+        val currency = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("USD", "SYP"))
+        }
+        box.addView(label("نوع الحركة", 14f, ink, true))
+        box.addView(direction); box.addView(reason); box.addView(amount); box.addView(currency)
+        val dialog = AlertDialog.Builder(this).setTitle("حركة نقدية أخرى")
+            .setView(box).setNegativeButton("إلغاء", null).setPositiveButton("حفظ الحركة", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val title = reason.text.toString().trim()
+                val value = amount.text.toString().toDoubleOrNull()
+                if (title.isBlank()) { reason.error = "أدخل بيان الحركة"; return@setOnClickListener }
+                if (value == null || value <= 0.0) { amount.error = "أدخل مبلغاً صحيحاً"; return@setOnClickListener }
+                lifecycleScope.launch {
+                    try {
+                        val incoming = direction.selectedItemPosition == 0
+                        dao.insertCashMovement(com.example.retailaccounting.data.CashMovement(
+                            direction = if (incoming) "IN" else "OUT",
+                            amount = value,
+                            currency = currency.selectedItem.toString(),
+                            reason = title
+                        ))
+                        dialog.dismiss()
+                        info("تم حفظ الحركة", "${if (incoming) "قبض" else "دفع"}: $title — $value ${currency.selectedItem}")
+                    } catch (e: Exception) {
+                        info("تعذر حفظ الحركة", e.message ?: "حدث خطأ غير متوقع.")
+                    }
+                }
+            }
+        }
+        dialog.show()
     }
 
 
