@@ -651,10 +651,65 @@ class MainActivity : AppCompatActivity() {
 
     private fun showReports() {
         content.removeAllViews(); section("التقارير")
-        card("ملخص الحركة اليومية", "▤") { info("الحركة اليومية", "ملخص المبيعات والمشتريات وحركة الصندوق.") }
+        card("ملخص الحركة اليومية", "▤") { showDailySummary() }
         card("الأرباح والخسائر", "⌁") { showProfitReport() }
-        card("رأس المال والموجودات", "◉") { info("رأس المال", "قيمة المخزون والصندوق والالتزامات.") }
+        card("رأس المال والموجودات", "◉") { showCapitalSummary() }
         card("المواد الأكثر والأقل حركة", "▥") { info("حركة المواد", "ترتيب المواد حسب المبيعات خلال فترة محددة.") }
+    }
+
+    private fun showDailySummary() {
+        lifecycleScope.launch {
+            try {
+                val calendar = java.util.Calendar.getInstance()
+                calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                calendar.set(java.util.Calendar.MINUTE, 0)
+                calendar.set(java.util.Calendar.SECOND, 0)
+                calendar.set(java.util.Calendar.MILLISECOND, 0)
+                val start = calendar.timeInMillis
+                val sales = dao.observeSales().first().filter { it.createdAt >= start }
+                val purchases = dao.observePurchases().first().filter { it.createdAt >= start }
+                val movements = dao.observeCashMovements().first().filter { it.createdAt >= start }
+                val currencies = (sales.map { it.currency } + purchases.map { it.currency } +
+                    movements.map { it.currency }).distinct().sorted()
+                if (currencies.isEmpty()) {
+                    info("ملخص الحركة اليومية", "لا توجد حركة مسجلة اليوم.")
+                    return@launch
+                }
+                val summary = currencies.joinToString("\\n\\n") { currency ->
+                    val sold = sales.filter { it.currency == currency }.sumOf { it.total }
+                    val bought = purchases.filter { it.currency == currency }.sumOf { it.total }
+                    val incoming = movements.filter { it.currency == currency && it.direction == "IN" }.sumOf { it.amount }
+                    val outgoing = movements.filter { it.currency == currency && it.direction == "OUT" }.sumOf { it.amount }
+                    "$currency\\nالمبيعات: $sold\\nالمشتريات: $bought\\nالمقبوضات: $incoming\\nالمدفوعات: $outgoing\\nصافي حركة الصندوق: ${incoming - outgoing}"
+                }
+                info("ملخص الحركة اليومية", summary)
+            } catch (e: Exception) {
+                info("ملخص الحركة اليومية", e.message ?: "تعذر إعداد الملخص.")
+            }
+        }
+    }
+
+    private fun showCapitalSummary() {
+        lifecycleScope.launch {
+            try {
+                val movements = dao.observeCashMovements().first()
+                val customers = dao.observeCustomers().first()
+                val suppliers = dao.observeSuppliers().first()
+                val currencies = (products.map { it.currency } + movements.map { it.currency } +
+                    customers.map { it.currency } + suppliers.map { it.currency }).distinct().sorted()
+                val summary = currencies.joinToString("\\n\\n") { currency ->
+                    val stock = products.filter { it.currency == currency }.sumOf { it.quantity * it.costPrice }
+                    val incoming = movements.filter { it.currency == currency && it.direction == "IN" }.sumOf { it.amount }
+                    val outgoing = movements.filter { it.currency == currency && it.direction == "OUT" }.sumOf { it.amount }
+                    val receivables = customers.filter { it.currency == currency }.sumOf { it.balance }
+                    val payables = suppliers.filter { it.currency == currency }.sumOf { it.balance }
+                    "$currency\\nقيمة المخزون بالتكلفة: $stock\\nرصيد الصندوق: ${incoming - outgoing}\\nأرصدة العملاء: $receivables\\nأرصدة الموردين: $payables"
+                }
+                info("رأس المال والموجودات — تقديري", if (summary.isBlank()) "لا توجد بيانات كافية." else summary)
+            } catch (e: Exception) {
+                info("رأس المال والموجودات", e.message ?: "تعذر حساب الموجودات.")
+            }
+        }
     }
 
     private fun showSettings() {
