@@ -654,7 +654,7 @@ class MainActivity : AppCompatActivity() {
         card("ملخص الحركة اليومية", "▤") { showDailySummary() }
         card("الأرباح والخسائر", "⌁") { showProfitReport() }
         card("رأس المال والموجودات", "◉") { showCapitalSummary() }
-        card("المواد الأكثر والأقل حركة", "▥") { info("حركة المواد", "ترتيب المواد حسب المبيعات خلال فترة محددة.") }
+        card("المواد الأكثر والأقل حركة", "▥") { showProductMovementReport() }
     }
 
     private fun showDailySummary() {
@@ -708,6 +708,32 @@ class MainActivity : AppCompatActivity() {
                 info("رأس المال والموجودات — تقديري", if (summary.isBlank()) "لا توجد بيانات كافية." else summary)
             } catch (e: Exception) {
                 info("رأس المال والموجودات", e.message ?: "تعذر حساب الموجودات.")
+            }
+        }
+    }
+
+    private fun showProductMovementReport() {
+        lifecycleScope.launch {
+            try {
+                val sales = dao.observeSales().first().filter {
+                    it.createdAt >= System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000
+                }
+                val totals = mutableMapOf<String, Double>()
+                sales.forEach { sale ->
+                    dao.getSaleItems(sale.id).forEach { item ->
+                        totals[item.productNameSnapshot] = (totals[item.productNameSnapshot] ?: 0.0) + item.quantityInBaseUnit
+                    }
+                }
+                if (totals.isEmpty()) {
+                    info("حركة المواد", "لا توجد مبيعات مسجلة خلال آخر 30 يوماً.")
+                    return@launch
+                }
+                val sorted = totals.entries.sortedByDescending { it.value }
+                val top = sorted.take(5).joinToString("\\n") { "${it.key}: ${it.value}" }
+                val low = sorted.takeLast(5).asReversed().joinToString("\\n") { "${it.key}: ${it.value}" }
+                info("حركة المواد — آخر 30 يوماً", "الأكثر حركة:\\n$top\\n\\nالأقل حركة:\\n$low")
+            } catch (e: Exception) {
+                info("حركة المواد", e.message ?: "تعذر إعداد التقرير.")
             }
         }
     }
