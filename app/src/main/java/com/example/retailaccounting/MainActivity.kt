@@ -243,14 +243,97 @@ class MainActivity : AppCompatActivity() {
             }
             info("قائمة المواد", msg)
         }
-        card("إدخال بضاعة وتسوية المخزون", "▦") { info("حركة المخزون", "إدخال البضاعة والتسوية مع سجل حركة لكل مادة.") }
-        card("جرد المستودع", "▣") { info("جرد المستودع", "جرد الكميات المسجلة ومراجعتها.") }
+        card("إدخال بضاعة أو إخراج وتسوية", "▦") { createInventoryAdjustment() }
+        card("سجل حركة المخزون", "↕") { showInventoryMovementHistory() }
+        card("جرد المستودع", "▣") { showStockCount() }
         card("المواد منخفضة الكمية", "↓") {
             val low = products.filter { it.lowStockLimit > 0 && it.quantity <= it.lowStockLimit }
             info("تنبيه المخزون", if (low.isEmpty()) "لا توجد مواد مسجلة تحت حد التنبيه." else low.joinToString("\n") { "${it.name}: ${it.quantity}" })
         }
     }
 
+
+    private fun createInventoryAdjustment() {
+        if (products.isEmpty()) {
+            info("حركة المخزون", "أضف مادة أولاً حتى تسجل حركة مخزون.")
+            return
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(22, 8, 22, 0)
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+        }
+        val productPicker = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                products.map { "${it.name} — المتوفر: ${it.quantity} ${it.baseUnit}" })
+        }
+        val directionPicker = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                listOf("إدخال إلى المستودع", "إخراج من المستودع"))
+        }
+        val quantity = EditText(this).apply { hint = "الكمية"; inputType = 8194 }
+        val note = EditText(this).apply { hint = "البيان أو سبب التسوية" }
+        box.addView(label("المادة", 14f, ink, true)); box.addView(productPicker)
+        box.addView(label("نوع الحركة", 14f, ink, true)); box.addView(directionPicker)
+        box.addView(quantity); box.addView(note)
+        val dialog = AlertDialog.Builder(this).setTitle("حركة مخزون جديدة").setView(box)
+            .setNegativeButton("إلغاء", null).setPositiveButton("حفظ الحركة", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val product = products.getOrNull(productPicker.selectedItemPosition) ?: return@setOnClickListener
+                val qty = quantity.text.toString().toDoubleOrNull()
+                if (qty == null || qty <= 0.0) {
+                    quantity.error = "أدخل كمية أكبر من صفر"
+                    return@setOnClickListener
+                }
+                val delta = if (directionPicker.selectedItemPosition == 0) qty else -qty
+                lifecycleScope.launch {
+                    try {
+                        dao.saveInventoryAdjustment(product, delta, note.text.toString().trim().ifBlank {
+                            if (delta > 0) "إدخال مخزون يدوي" else "إخراج مخزون يدوي"
+                        })
+                        dialog.dismiss()
+                        info("تم تحديث المخزون", "تم تسجيل الحركة وتحديث رصيد المادة.")
+                    } catch (e: Exception) {
+                        info("تعذر تسجيل الحركة", e.message ?: "تحقق من الكمية المتوفرة.")
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+    private fun showInventoryMovementHistory() {
+        lifecycleScope.launch {
+            try {
+                val movements = dao.getInventoryMovements()
+                if (movements.isEmpty()) {
+                    info("سجل حركة المخزون", "لا توجد حركات مسجلة حتى الآن.")
+                    return@launch
+                }
+                val lines = movements.joinToString("\\n\\n") { movement ->
+                    val date = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+                        .format(java.util.Date(movement.createdAt))
+                    val direction = if (movement.direction == "IN") "إدخال" else "إخراج"
+                    "$direction — ${movement.productName}: ${movement.quantity}\\n${movement.note}\\n$date"
+                }
+                info("سجل حركة المخزون", lines)
+            } catch (e: Exception) {
+                info("سجل حركة المخزون", e.message ?: "تعذر تحميل سجل الحركات.")
+            }
+        }
+    }
+
+    private fun showStockCount() {
+        if (products.isEmpty()) {
+            info("جرد المستودع", "لا توجد مواد مسجلة.")
+            return
+        }
+        val lines = products.joinToString("\\n\\n") { product ->
+            "${product.name}\\nالرصيد: ${product.quantity} ${product.baseUnit}\\nقيمة التكلفة التقديرية: ${product.quantity * product.costPrice} ${product.currency}"
+        }
+        info("جرد المستودع — ${products.size} مادة", lines)
+    }
 
     private fun showCashbox() {
         lifecycleScope.launch {
