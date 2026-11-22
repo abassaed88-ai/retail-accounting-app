@@ -57,11 +57,39 @@ abstract class StoreDao {
         }
         val purchaseId = insertPurchase(purchase)
         insertPurchaseItems(items.map { it.copy(purchaseId = purchaseId) })
+        items.forEach { item ->
+            insertInventoryMovement(InventoryMovement(
+                productId = item.productId, productName = item.productNameSnapshot,
+                direction = "IN", quantity = item.quantity,
+                note = "فاتورة شراء #$purchaseId", createdAt = purchase.createdAt
+            ))
+        }
         insertCashMovement(CashMovement(
             direction = "OUT", amount = purchase.total, currency = purchase.currency,
             reason = "مشتريات فاتورة #$purchaseId", createdAt = purchase.createdAt
         ))
         return purchaseId
+    }
+
+    @Insert
+    abstract suspend fun insertInventoryMovement(movement: InventoryMovement): Long
+
+    @Query("SELECT * FROM inventory_movements ORDER BY createdAt DESC LIMIT 300")
+    abstract suspend fun getInventoryMovements(): List<InventoryMovement>
+
+    @Query("UPDATE products SET quantity = quantity + :delta WHERE id = :productId AND quantity + :delta >= 0")
+    abstract suspend fun adjustProductQuantity(productId: Long, delta: Double): Int
+
+    @Transaction
+    open suspend fun saveInventoryAdjustment(product: Product, delta: Double, note: String): Long {
+        require(delta != 0.0) { "أدخل كمية غير صفرية" }
+        val changed = adjustProductQuantity(product.id, delta)
+        check(changed == 1) { "الكمية الناتجة غير صالحة أو المادة غير موجودة" }
+        return insertInventoryMovement(InventoryMovement(
+            productId = product.id, productName = product.name,
+            direction = if (delta > 0) "IN" else "OUT",
+            quantity = kotlin.math.abs(delta), note = note
+        ))
     }
 
     @Query("SELECT * FROM sales ORDER BY createdAt DESC")
@@ -164,6 +192,13 @@ abstract class StoreDao {
         }
         val saleId = insertSale(sale)
         insertSaleItems(items.map { it.copy(saleId = saleId) })
+        items.forEach { item ->
+            insertInventoryMovement(InventoryMovement(
+                productId = item.productId, productName = item.productNameSnapshot,
+                direction = "OUT", quantity = item.quantityInBaseUnit,
+                note = "فاتورة مبيع #$saleId", createdAt = sale.createdAt
+            ))
+        }
         if (sale.paymentType == "CASH") {
             insertCashMovement(CashMovement(
                 direction = "IN", amount = sale.total, currency = sale.currency,
