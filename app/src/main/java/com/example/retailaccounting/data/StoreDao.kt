@@ -57,6 +57,10 @@ abstract class StoreDao {
         }
         val purchaseId = insertPurchase(purchase)
         insertPurchaseItems(items.map { it.copy(purchaseId = purchaseId) })
+        insertCashMovement(CashMovement(
+            direction = "OUT", amount = purchase.total, currency = purchase.currency,
+            reason = "مشتريات فاتورة #$purchaseId", createdAt = purchase.createdAt
+        ))
         return purchaseId
     }
 
@@ -93,6 +97,9 @@ abstract class StoreDao {
     @Insert
     abstract suspend fun insertCashMovement(movement: CashMovement): Long
 
+    @Query("SELECT * FROM cash_movements ORDER BY createdAt DESC")
+    abstract fun observeCashMovements(): Flow<List<CashMovement>>
+
     // The invoice and stock deductions succeed together, or are rolled back together.
     @Transaction
     open suspend fun saveSaleAndDeductStock(sale: Sale, items: List<SaleItem>): Long {
@@ -104,6 +111,12 @@ abstract class StoreDao {
         }
         val saleId = insertSale(sale)
         insertSaleItems(items.map { it.copy(saleId = saleId) })
+        if (sale.paymentType == "CASH") {
+            insertCashMovement(CashMovement(
+                direction = "IN", amount = sale.total, currency = sale.currency,
+                reason = "مبيعات فاتورة #$saleId", createdAt = sale.createdAt
+            ))
+        }
         return saleId
     }
 }
