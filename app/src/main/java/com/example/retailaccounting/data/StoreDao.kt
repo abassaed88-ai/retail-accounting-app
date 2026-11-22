@@ -146,6 +146,40 @@ abstract class StoreDao {
         return returnId
     }
 
+    @Query("SELECT * FROM purchases WHERE id = :purchaseId LIMIT 1")
+    abstract suspend fun getPurchase(purchaseId: Long): Purchase?
+    @Query("SELECT COALESCE(SUM(quantity), 0) FROM purchase_return_items WHERE purchaseItemId = :purchaseItemId")
+    abstract suspend fun getReturnedPurchaseQuantity(purchaseItemId: Long): Double
+    @Insert abstract suspend fun insertPurchaseReturn(value: PurchaseReturn): Long
+    @Insert abstract suspend fun insertPurchaseReturnItems(values: List<PurchaseReturnItem>)
+    @Transaction
+    open suspend fun savePurchaseReturn(purchaseId: Long, selected: List<Pair<PurchaseItem, Double>>, reason: String): Long {
+        require(selected.isNotEmpty()) { "اختر مادة واحدة على الأقل للمرتجع" }
+        val purchase = requireNotNull(getPurchase(purchaseId)) { "فاتورة الشراء غير موجودة" }
+        val prepared = selected.map { (item, qty) ->
+            require(item.purchaseId == purchaseId && qty > 0.0) { "كمية المرتجع غير صحيحة" }
+            require(getReturnedPurchaseQuantity(item.id) + qty <= item.quantity + 0.0000001) { "كمية المرتجع تتجاوز الكمية المتبقية من ${item.productNameSnapshot}" }
+            requireNotNull(getProduct(item.productId)) { "المادة غير موجودة بالمخزون" }
+            item to qty
+        }
+        val total = prepared.sumOf { (item, qty) -> item.unitCost * qty }
+        require(total > 0.0) { "قيمة المرتجع غير صحيحة" }
+        val returnId = insertPurchaseReturn(PurchaseReturn(purchaseId = purchaseId, currency = purchase.currency, total = total, reason = reason))
+        insertPurchaseReturnItems(prepared.map { (item, qty) -> PurchaseReturnItem(returnId = returnId, purchaseItemId = item.id, productId = item.productId, productNameSnapshot = item.productNameSnapshot, quantity = qty, unitCost = item.unitCost, lineTotal = item.unitCost * qty) })
+        prepared.forEach { (item, qty) ->
+            check(adjustProductQuantity(item.productId, -qty) == 1) { "المخزون الحالي لا يكفي لإرجاع ${item.productNameSnapshot}" }
+            insertInventoryMovement(InventoryMovement(productId = item.productId, productName = item.productNameSnapshot, direction = "OUT", quantity = qty, note = "مرتجع شراء #$returnId — فاتورة #$purchaseId"))
+        }
+        if (purchase.paymentType == "CASH") {
+            insertCashMovement(CashMovement(direction = "IN", amount = total, currency = purchase.currency, reason = "استرداد قيمة مرتجع شراء #$returnId"))
+        } else {
+            val supplierId = requireNotNull(purchase.supplierId) { "الفاتورة الآجلة لا تحتوي حساب مورد" }
+            check(adjustSupplierBalance(supplierId, -total) == 1) { "حساب المورد غير موجود" }
+            insertPartyTransaction(PartyTransaction(partyType = "SUPPLIER", partyId = supplierId, action = "RETURN", amount = total, currency = purchase.currency, note = "مرتجع شراء #$returnId — فاتورة #$purchaseId"))
+        }
+        return returnId
+    }
+
     @Query("SELECT * FROM purchase_items WHERE purchaseId = :purchaseId ORDER BY id")
     abstract suspend fun getPurchaseItems(purchaseId: Long): List<PurchaseItem>
 
