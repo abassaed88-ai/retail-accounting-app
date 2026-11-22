@@ -36,6 +36,27 @@ abstract class StoreDao {
     @Insert
     abstract suspend fun insertSaleItems(items: List<SaleItem>)
 
+
+    @Query("UPDATE products SET quantity = quantity + :quantity, costPrice = :unitCost, salePrice = :salePrice WHERE id = :productId")
+    abstract suspend fun receiveStock(productId: Long, quantity: Double, unitCost: Double, salePrice: Double): Int
+
+    @Insert
+    abstract suspend fun insertPurchase(purchase: Purchase): Long
+
+    @Insert
+    abstract suspend fun insertPurchaseItems(items: List<PurchaseItem>)
+
+    @Transaction
+    open suspend fun savePurchaseAndAddStock(purchase: Purchase, item: PurchaseItem): Long {
+        require(item.quantity > 0.0) { "الكمية يجب أن تكون أكبر من صفر" }
+        require(item.unitCost >= 0.0 && item.salePriceSet >= 0.0) { "تحقق من الأسعار المدخلة" }
+        val changed = receiveStock(item.productId, item.quantity, item.unitCost, item.salePriceSet)
+        check(changed == 1) { "المادة المحددة غير موجودة" }
+        val purchaseId = insertPurchase(purchase)
+        insertPurchaseItems(listOf(item.copy(purchaseId = purchaseId)))
+        return purchaseId
+    }
+
     @Query("SELECT * FROM sales ORDER BY createdAt DESC")
     abstract fun observeSales(): Flow<List<Sale>>
 
