@@ -47,13 +47,16 @@ abstract class StoreDao {
     abstract suspend fun insertPurchaseItems(items: List<PurchaseItem>)
 
     @Transaction
-    open suspend fun savePurchaseAndAddStock(purchase: Purchase, item: PurchaseItem): Long {
-        require(item.quantity > 0.0) { "الكمية يجب أن تكون أكبر من صفر" }
-        require(item.unitCost >= 0.0 && item.salePriceSet >= 0.0) { "تحقق من الأسعار المدخلة" }
-        val changed = receiveStock(item.productId, item.quantity, item.unitCost, item.salePriceSet)
-        check(changed == 1) { "المادة المحددة غير موجودة" }
+    open suspend fun savePurchaseAndAddStock(purchase: Purchase, items: List<PurchaseItem>): Long {
+        require(items.isNotEmpty()) { "لا يمكن حفظ فاتورة شراء فارغة" }
+        items.forEach { item ->
+            require(item.quantity > 0.0) { "الكمية يجب أن تكون أكبر من صفر" }
+            require(item.unitCost >= 0.0 && item.salePriceSet >= 0.0) { "تحقق من الأسعار المدخلة" }
+            val changed = receiveStock(item.productId, item.quantity, item.unitCost, item.salePriceSet)
+            check(changed == 1) { "المادة المحددة غير موجودة: ${item.productNameSnapshot}" }
+        }
         val purchaseId = insertPurchase(purchase)
-        insertPurchaseItems(listOf(item.copy(purchaseId = purchaseId)))
+        insertPurchaseItems(items.map { it.copy(purchaseId = purchaseId) })
         return purchaseId
     }
 
