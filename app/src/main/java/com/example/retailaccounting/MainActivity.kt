@@ -197,18 +197,18 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
                 val currencies = movements.map { it.currency }.distinct().sorted()
-                val summary = currencies.joinToString("\\n") { currency ->
+                val summary = currencies.joinToString("\n") { currency ->
                     val incoming = movements.filter { it.currency == currency && it.direction == "IN" }.sumOf { it.amount }
                     val outgoing = movements.filter { it.currency == currency && it.direction == "OUT" }.sumOf { it.amount }
                     "$currency — المقبوضات: $incoming | المدفوعات: $outgoing | الرصيد: ${incoming - outgoing}"
                 }
-                val latest = movements.take(30).joinToString("\\n\\n") { movement ->
+                val latest = movements.take(30).joinToString("\n\n") { movement ->
                     val date = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
                         .format(java.util.Date(movement.createdAt))
                     val direction = if (movement.direction == "IN") "قبض" else "دفع"
-                    "$direction: ${movement.amount} ${movement.currency}\\n${movement.reason}\\n$date"
+                    "$direction: ${movement.amount} ${movement.currency}\n${movement.reason}\n$date"
                 }
-                info("الصندوق الرئيسي", "$summary\\n\\nآخر الحركات:\\n$latest")
+                info("الصندوق الرئيسي", "$summary\n\nآخر الحركات:\n$latest")
             } catch (e: Exception) {
                 info("الصندوق الرئيسي", e.message ?: "تعذر تحميل حركة الصندوق.")
             }
@@ -245,7 +245,7 @@ class MainActivity : AppCompatActivity() {
                         )
                         dao.saveExpenseAndCashMovement(expense)
                         dialog.dismiss()
-                        info("تم تسجيل المصروف", "$title — $amount ${expense.currency}\\nتم خصم المبلغ من حركة الصندوق.")
+                        info("تم تسجيل المصروف", "$title — $amount ${expense.currency}\nتم خصم المبلغ من حركة الصندوق.")
                     } catch (e: Exception) {
                         info("تعذر تسجيل المصروف", e.message ?: "حدث خطأ غير متوقع.")
                     }
@@ -273,11 +273,11 @@ class MainActivity : AppCompatActivity() {
                     info("الأرباح والخسائر", "لا توجد مبيعات مسجلة بعد.")
                     return@launch
                 }
-                val report = summaries.joinToString("\\n\\n") { item ->
+                val report = summaries.joinToString("\n\n") { item ->
                     val profit = item.revenue - item.cost
-                    "العملة: ${item.currency}\\nإجمالي المبيعات: ${item.revenue}\\nكلفة البضاعة المباعة: ${item.cost}\\nمجمل الربح: $profit"
+                    "العملة: ${item.currency}\nإجمالي المبيعات: ${item.revenue}\nكلفة البضاعة المباعة: ${item.cost}\nمجمل الربح: $profit"
                 }
-                info("مجمل الأرباح حسب العملة", "$report\\n\\nملاحظة: صافي الربح هنا بعد خصم المصاريف المسجلة فقط، ولا يشمل أي مصاريف أو التزامات لم تُسجل.")
+                info("مجمل الأرباح حسب العملة", "$report\n\nملاحظة: صافي الربح هنا بعد خصم المصاريف المسجلة فقط، ولا يشمل أي مصاريف أو التزامات لم تُسجل.")
             } catch (e: Exception) {
                 info("الأرباح والخسائر", e.message ?: "تعذر حساب الأرباح.")
             }
