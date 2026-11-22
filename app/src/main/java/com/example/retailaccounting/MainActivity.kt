@@ -301,7 +301,7 @@ class MainActivity : AppCompatActivity() {
                         if (header) setBackgroundColor(blue)
                     }
                 val header = TableRow(this@MainActivity)
-                listOf("رقم الفاتورة", "الوقت", "اسم المادة", "الكمية", "سعر المبيع", "الإجمالي", "الربح").forEach {
+                listOf("رقم الفاتورة", "الوقت", "اسم المادة", "الكمية", "سعر المبيع", "الإجمالي", "الربح", "سعر الصرف").forEach {
                     header.addView(cell(it, true))
                 }
                 table.addView(header)
@@ -315,7 +315,8 @@ class MainActivity : AppCompatActivity() {
                         String.format(java.util.Locale.US, "%.2f", item.quantityInSelectedUnit) + " " + item.selectedUnit,
                         String.format(java.util.Locale.US, "%.2f", item.unitPrice) + " " + sale.currency,
                         String.format(java.util.Locale.US, "%.2f", item.lineTotal),
-                        String.format(java.util.Locale.US, "%.2f", lineProfit)
+                        String.format(java.util.Locale.US, "%.2f", lineProfit),
+                        String.format(java.util.Locale.US, "%.2f", sale.exchangeRateAtSale)
                     ).forEach { row.addView(cell(it)) }
                     table.addView(row)
                     val separator = View(this@MainActivity).apply { setBackgroundColor(0xFFE5EAEC.toInt()) }
