@@ -64,10 +64,21 @@ abstract class StoreDao {
                 note = "فاتورة شراء #$purchaseId", createdAt = purchase.createdAt
             ))
         }
-        insertCashMovement(CashMovement(
-            direction = "OUT", amount = purchase.total, currency = purchase.currency,
-            reason = "مشتريات فاتورة #$purchaseId", createdAt = purchase.createdAt
-        ))
+        if (purchase.paymentType == "CASH") {
+            insertCashMovement(CashMovement(
+                direction = "OUT", amount = purchase.total, currency = purchase.currency,
+                reason = "مشتريات فاتورة #$purchaseId", createdAt = purchase.createdAt
+            ))
+        } else {
+            val supplierId = requireNotNull(purchase.supplierId) { "اختر المورد للشراء الآجل" }
+            val changed = adjustSupplierBalance(supplierId, purchase.total)
+            check(changed == 1) { "حساب المورد غير موجود" }
+            insertPartyTransaction(PartyTransaction(
+                partyType = "SUPPLIER", partyId = supplierId, action = "DEBT",
+                amount = purchase.total, currency = purchase.currency,
+                note = "فاتورة شراء آجلة #$purchaseId", createdAt = purchase.createdAt
+            ))
+        }
         return purchaseId
     }
 
@@ -203,6 +214,15 @@ abstract class StoreDao {
             insertCashMovement(CashMovement(
                 direction = "IN", amount = sale.total, currency = sale.currency,
                 reason = "مبيعات فاتورة #$saleId", createdAt = sale.createdAt
+            ))
+        } else {
+            val customerId = requireNotNull(sale.customerId) { "اختر العميل للبيع الآجل" }
+            val changed = adjustCustomerBalance(customerId, sale.total)
+            check(changed == 1) { "حساب العميل غير موجود" }
+            insertPartyTransaction(PartyTransaction(
+                partyType = "CUSTOMER", partyId = customerId, action = "DEBT",
+                amount = sale.total, currency = sale.currency,
+                note = "فاتورة مبيع آجلة #$saleId", createdAt = sale.createdAt
             ))
         }
         return saleId
