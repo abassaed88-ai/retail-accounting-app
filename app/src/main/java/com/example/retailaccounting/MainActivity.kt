@@ -215,12 +215,52 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    private fun createExpense() {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 0)
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+        }
+        val titleInput = EditText(this).apply { hint = "بيان المصروف، مثال: أجرة أو كهرباء" }
+        val amountInput = EditText(this).apply { hint = "قيمة المصروف"; inputType = 8194 }
+        val noteInput = EditText(this).apply { hint = "ملاحظات (اختياري)" }
+        val currency = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("USD", "SYP"))
+        }
+        box.addView(titleInput); box.addView(amountInput); box.addView(currency); box.addView(noteInput)
+        val dialog = AlertDialog.Builder(this).setTitle("تسجيل مصروف نقدي")
+            .setView(box).setNegativeButton("إلغاء", null).setPositiveButton("حفظ المصروف", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val title = titleInput.text.toString().trim()
+                val amount = amountInput.text.toString().toDoubleOrNull()
+                if (title.isBlank()) { titleInput.error = "أدخل بيان المصروف"; return@setOnClickListener }
+                if (amount == null || amount <= 0.0) { amountInput.error = "أدخل قيمة صحيحة أكبر من صفر"; return@setOnClickListener }
+                lifecycleScope.launch {
+                    try {
+                        val expense = com.example.retailaccounting.data.Expense(
+                            title = title, amount = amount, currency = currency.selectedItem.toString(),
+                            note = noteInput.text.toString().trim()
+                        )
+                        dao.saveExpenseAndCashMovement(expense)
+                        dialog.dismiss()
+                        info("تم تسجيل المصروف", "$title — $amount ${expense.currency}\\nتم خصم المبلغ من حركة الصندوق.")
+                    } catch (e: Exception) {
+                        info("تعذر تسجيل المصروف", e.message ?: "حدث خطأ غير متوقع.")
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
     private fun showAccounts() {
         content.removeAllViews(); section("الحسابات والصندوق")
         card("حركة الصندوق", "▣") { showCashbox() }
         card("الديون والحسابات", "♙") { info("الحسابات", "قوائم العملاء والموردين وأرصدتهم.") }
         card("قبض من حساب / دفع لحساب", "⇄") { info("القبض والدفع", "تسجيل الحركات وربطها برصيد الحساب.") }
-        card("تسجيل المصاريف", "−") { info("المصاريف", "تسجيل المصروفات وتصنيفها.") }
+        card("تسجيل المصاريف", "−") { createExpense() }
         card("الإيرادات الأخرى", "+") { info("الإيرادات", "تسجيل الإيرادات غير الناتجة عن المبيعات.") }
     }
 
@@ -237,7 +277,7 @@ class MainActivity : AppCompatActivity() {
                     val profit = item.revenue - item.cost
                     "العملة: ${item.currency}\\nإجمالي المبيعات: ${item.revenue}\\nكلفة البضاعة المباعة: ${item.cost}\\nمجمل الربح: $profit"
                 }
-                info("مجمل الأرباح حسب العملة", "$report\\n\\nملاحظة: هذا مجمل الربح قبل خصم المصاريف التشغيلية والالتزامات.")
+                info("مجمل الأرباح حسب العملة", "$report\\n\\nملاحظة: صافي الربح هنا بعد خصم المصاريف المسجلة فقط، ولا يشمل أي مصاريف أو التزامات لم تُسجل.")
             } catch (e: Exception) {
                 info("الأرباح والخسائر", e.message ?: "تعذر حساب الأرباح.")
             }
