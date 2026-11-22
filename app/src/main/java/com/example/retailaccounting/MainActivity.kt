@@ -52,35 +52,56 @@ class MainActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutDirection = View.LAYOUT_DIRECTION_RTL
-            setBackgroundColor(pale)
+            setBackgroundColor(0xFFF4F6F7.toInt())
         }
         val header = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(18, 14, 18, 12)
+            orientation = LinearLayout.VERTICAL
+            setPadding(20, 18, 20, 16)
             setBackgroundColor(-1)
         }
-        header.addView(label("Good Girl", 25f, blue, true))
-        header.addView(label("إدارة المبيعات والمخزون", 13f, 0xFF777777.toInt()))
+        val brandRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val brand = label("Good Girl", 26f, blue, true)
+        brandRow.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
+        brandRow.addView(label("●", 12f, 0xFF35A66F.toInt(), true))
+        header.addView(brandRow)
+        header.addView(label("نظام إدارة المبيعات والمخزون", 13f, 0xFF7B858A.toInt()))
         root.addView(header)
-        val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setBackgroundColor(-1) }
+
+        val tabs = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(8, 0, 8, 0)
+            setBackgroundColor(-1)
+        }
         listOf("الفواتير", "الحسابات", "التقارير", "الإعدادات").forEach { name ->
+            val selected = name == activeTab
             val tab = TextView(this).apply {
-                text = name; textSize = 14f; gravity = Gravity.CENTER
-                setTextColor(if (name == activeTab) blue else 0xFF888888.toInt())
-                setPadding(3, 16, 3, 16)
-                setTypeface(typeface, if (name == activeTab) Typeface.BOLD else Typeface.NORMAL)
+                text = name
+                textSize = 14f
+                gravity = Gravity.CENTER
+                setTextColor(if (selected) blue else 0xFF7C858A.toInt())
+                setPadding(5, 15, 5, 13)
+                setTypeface(typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
+                if (selected) setBackgroundColor(0xFFEAF3F6.toInt())
                 setOnClickListener { activeTab = name; buildShell() }
             }
             tabs.addView(tab, LinearLayout.LayoutParams(0, -2, 1f))
         }
         root.addView(tabs)
         val scroll = ScrollView(this)
-        content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(14, 14, 14, 18) }
+        content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(15, 16, 15, 20)
+        }
         scroll.addView(content)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(TextView(this).apply {
-            text = "↶       الصندوق الرئيسي"
-            textSize = 17f; setTextColor(-1); setTypeface(typeface, Typeface.BOLD)
-            gravity = Gravity.CENTER; setPadding(12, 15, 12, 15); setBackgroundColor(blue)
+            text = "▣     الصندوق الرئيسي"
+            textSize = 16f
+            setTextColor(-1)
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(12, 16, 12, 16)
+            setBackgroundColor(blue)
             setOnClickListener { showCashbox() }
         })
         setContentView(root)
@@ -97,16 +118,41 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun card(title: String, icon: String = "◆", action: () -> Unit) {
-        val row = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            layoutDirection = View.LAYOUT_DIRECTION_RTL; setPadding(18, 17, 18, 17)
-            setBackgroundColor(-1); elevation = 3f; setOnClickListener { action() }
+        val background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(-1)
+            cornerRadius = 22f
+            setStroke(1, 0xFFE5EAEC.toInt())
         }
-        row.addView(label(icon, 24f, blue, true).apply { gravity = Gravity.CENTER },
-            LinearLayout.LayoutParams(48, 48))
-        row.addView(label(title, 17f, blue, true).apply { setPadding(10, 0, 8, 0) },
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            setPadding(17, 14, 17, 14)
+            this.background = background
+            elevation = 2.5f
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { action() }
+        }
+        val iconBox = TextView(this).apply {
+            text = icon
+            textSize = 23f
+            gravity = Gravity.CENTER
+            setTextColor(blue)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFFEAF3F6.toInt())
+                cornerRadius = 16f
+            }
+        }
+        row.addView(iconBox, LinearLayout.LayoutParams(52, 52))
+        row.addView(label(title, 16f, blue, true).apply { setPadding(13, 0, 8, 0) },
             LinearLayout.LayoutParams(0, -2, 1f))
-        content.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = 12; marginStart = 2; marginEnd = 2 })
+        row.addView(label("‹", 25f, 0xFF9AA7AC.toInt(), true))
+        content.addView(row, LinearLayout.LayoutParams(-1, -2).apply {
+            bottomMargin = 11
+            marginStart = 2
+            marginEnd = 2
+        })
     }
 
     private fun info(title: String, message: String) {
