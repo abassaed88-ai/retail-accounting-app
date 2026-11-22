@@ -314,7 +314,16 @@ class MainActivity : AppCompatActivity() {
     private fun showPartyList(customers: Boolean) {
         lifecycleScope.launch {
             try {
-                val entries = if (customers) dao.observeCustomers().first() else dao.observeSuppliers().first()
+                val entries: List<Triple<Long, String, String>> = if (customers) {
+                    dao.observeCustomers().first().map { Triple(it.id, it.name, it.currency) }
+                } else {
+                    dao.observeSuppliers().first().map { Triple(it.id, it.name, it.currency) }
+                }
+                val balances: Map<Long, Double> = if (customers) {
+                    dao.observeCustomers().first().associate { it.id to it.balance }
+                } else {
+                    dao.observeSuppliers().first().associate { it.id to it.balance }
+                }
                 if (entries.isEmpty()) {
                     AlertDialog.Builder(this@MainActivity)
                         .setTitle(if (customers) "قائمة العملاء" else "قائمة الموردين")
@@ -324,11 +333,14 @@ class MainActivity : AppCompatActivity() {
                     return@launch
                 }
                 val names = entries.map { entry ->
-                    "${entry.name} — الرصيد: ${entry.balance} ${entry.currency}"
+                    "${entry.second} — الرصيد: ${balances[entry.first] ?: 0.0} ${entry.third}"
                 }.toTypedArray()
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle(if (customers) "قائمة العملاء" else "قائمة الموردين")
-                    .setItems(names) { _, which -> showPartyActions(customers, entries[which].id, entries[which].name, entries[which].currency) }
+                    .setItems(names) { _, which ->
+                        val selected = entries[which]
+                        showPartyActions(customers, selected.first, selected.second, selected.third)
+                    }
                     .setPositiveButton(if (customers) "إضافة عميل" else "إضافة مورد") { _, _ -> addParty(customers) }
                     .setNegativeButton("إغلاق", null).show()
             } catch (e: Exception) {
