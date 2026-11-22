@@ -211,6 +211,7 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+
     private fun createSale() {
         if (products.isEmpty()) {
             info("فاتورة مبيع", "أضف مادة إلى المخزون أولاً حتى تتمكن من تسجيل عملية بيع.")
@@ -221,64 +222,74 @@ class MainActivity : AppCompatActivity() {
             setPadding(24, 8, 24, 0)
             layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
-        val productPicker = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
-                products.map { "${it.name} — المتوفر: ${it.quantity} ${it.baseUnit}" })
-        }
-        fun numberInput(hintText: String) = EditText(this).apply {
-            hint = hintText
-            textSize = 16f
-            inputType = 8194
-        }
-        val quantityInput = numberInput("الكمية المباعة")
-        val priceInput = numberInput("سعر بيع الوحدة")
-        val currencyLabel = label("العملة: ${products.first().currency}", 14f, ink)
-        productPicker.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                currencyLabel.text = "العملة: ${products[position].currency}"
-                priceInput.setText(products[position].salePrice.toString())
+        val rows = mutableListOf<Triple<Spinner, EditText, EditText>>()
+        fun addRow() {
+            val rowBox = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(0, 8, 0, 8)
             }
+            val picker = Spinner(this).apply {
+                adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                    products.map { "${it.name} — المتوفر: ${it.quantity} ${it.baseUnit}" })
+            }
+            val qty = EditText(this).apply { hint = "الكمية المباعة"; inputType = 8194 }
+            val price = EditText(this).apply { hint = "سعر بيع الوحدة"; inputType = 8194 }
+            price.setText(products.first().salePrice.toString())
+            picker.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    price.setText(products[position].salePrice.toString())
+                }
+            }
+            rowBox.addView(label("المادة", 14f, ink, true))
+            rowBox.addView(picker); rowBox.addView(qty); rowBox.addView(price)
+            box.addView(rowBox)
+            rows.add(Triple(picker, qty, price))
         }
-        box.addView(label("اختر المادة", 14f))
-        box.addView(productPicker)
-        box.addView(quantityInput)
-        box.addView(priceInput)
-        box.addView(currencyLabel)
-        val dialog = AlertDialog.Builder(this).setTitle("فاتورة مبيع").setView(box)
+        addRow()
+        val addButton = Button(this).apply { text = "＋ إضافة مادة للفاتورة"; setOnClickListener { addRow() } }
+        box.addView(addButton)
+        val dialog = AlertDialog.Builder(this).setTitle("فاتورة مبيع متعددة المواد").setView(box)
             .setNegativeButton("إلغاء", null).setPositiveButton("حفظ الفاتورة", null).create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val product = products.getOrNull(productPicker.selectedItemPosition) ?: return@setOnClickListener
-                val qty = quantityInput.text.toString().toDoubleOrNull()
-                val price = priceInput.text.toString().toDoubleOrNull()
-                if (qty == null || qty <= 0.0) { quantityInput.error = "أدخل كمية صحيحة"; return@setOnClickListener }
-                if (price == null || price < 0.0) { priceInput.error = "أدخل سعر بيع صحيح"; return@setOnClickListener }
-                if (qty > product.quantity) { quantityInput.error = "الكمية أكبر من المتوفر في المخزون"; return@setOnClickListener }
-                val total = qty * price
+                val parsed = mutableListOf<Pair<Product, Pair<Double, Double>>>()
+                for ((picker, qtyInput, priceInput) in rows) {
+                    val product = products.getOrNull(picker.selectedItemPosition) ?: continue
+                    val qty = qtyInput.text.toString().toDoubleOrNull()
+                    val price = priceInput.text.toString().toDoubleOrNull()
+                    if (qty == null || qty <= 0.0) { qtyInput.error = "أدخل كمية صحيحة"; return@setOnClickListener }
+                    if (price == null || price < 0.0) { priceInput.error = "أدخل سعر بيع صحيح"; return@setOnClickListener }
+                    parsed.add(product to (qty to price))
+                }
+                if (parsed.isEmpty()) { info("فاتورة مبيع", "أضف مادة واحدة على الأقل."); return@setOnClickListener }
+                val currency = parsed.first().first.currency
+                if (parsed.any { it.first.currency != currency }) {
+                    info("اختلاف العملة", "يجب أن تكون جميع مواد الفاتورة بنفس العملة."); return@setOnClickListener
+                }
+                val requestedByProduct = parsed.groupBy { it.first.id }.mapValues { entry -> entry.value.sumOf { it.second.first } }
+                for ((productId, requested) in requestedByProduct) {
+                    val product = products.first { it.id == productId }
+                    if (requested > product.quantity) {
+                        info("المخزون غير كافٍ", "الكمية المطلوبة من ${product.name} أكبر من المتوفر."); return@setOnClickListener
+                    }
+                }
+                val total = parsed.sumOf { it.second.first * it.second.second }
+                val items = parsed.map { (product, values) ->
+                    val (qty, price) = values
+                    SaleItem(saleId = 0, productId = product.id, productNameSnapshot = product.name,
+                        quantityInSelectedUnit = qty, selectedUnit = product.baseUnit,
+                        baseUnitsPerSelectedUnit = 1.0, quantityInBaseUnit = qty,
+                        unitPrice = price, unitCostSnapshot = product.costPrice, lineTotal = qty * price)
+                }
                 lifecycleScope.launch {
                     try {
-                        val sale = Sale(
-                            currency = product.currency,
+                        val sale = Sale(currency = currency,
                             exchangeRateAtSale = dao.getExchangeRate()?.usdToSyp ?: 1.0,
-                            subtotal = total,
-                            total = total,
-                            paymentType = "CASH"
-                        )
-                        val item = SaleItem(
-                            saleId = 0, productId = product.id,
-                            productNameSnapshot = product.name,
-                            quantityInSelectedUnit = qty,
-                            selectedUnit = product.baseUnit,
-                            baseUnitsPerSelectedUnit = 1.0,
-                            quantityInBaseUnit = qty,
-                            unitPrice = price,
-                            unitCostSnapshot = product.costPrice,
-                            lineTotal = total
-                        )
-                        dao.saveSaleAndDeductStock(sale, listOf(item))
+                            subtotal = total, total = total, paymentType = "CASH")
+                        dao.saveSaleAndDeductStock(sale, items)
                         dialog.dismiss()
-                        info("تم حفظ الفاتورة", "إجمالي الفاتورة: $total ${product.currency}\nتم تحديث المخزون وحفظ كلفة المادة وقت البيع.")
+                        info("تم حفظ الفاتورة", "عدد المواد: ${items.size}\nإجمالي الفاتورة: $total $currency\nتم تحديث المخزون وحفظ كلفة كل مادة وقت البيع.")
                     } catch (e: Exception) {
                         info("تعذر حفظ الفاتورة", e.message ?: "حدث خطأ غير متوقع.")
                     }
@@ -287,7 +298,6 @@ class MainActivity : AppCompatActivity() {
         }
         dialog.show()
     }
-
 
     private fun createPurchase() {
         if (products.isEmpty()) {
@@ -299,47 +309,62 @@ class MainActivity : AppCompatActivity() {
             setPadding(24, 8, 24, 0)
             layoutDirection = View.LAYOUT_DIRECTION_RTL
         }
-        val picker = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
-                products.map { "${it.name} — الرصيد الحالي: ${it.quantity} ${it.baseUnit}" })
-        }
-        fun numeric(h: String) = EditText(this).apply { hint = h; textSize = 16f; inputType = 8194 }
-        val quantity = numeric("الكمية المشتراة")
-        val cost = numeric("كلفة شراء الوحدة")
-        val salePrice = numeric("سعر البيع الجديد (أدخله يدوياً)")
-        val currencyLabel = label("العملة: ${products.first().currency}", 14f, ink)
-        picker.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onNothingSelected(parent: AdapterView<*>?) {}
-            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                val product = products[position]
-                currencyLabel.text = "العملة: ${product.currency}"
-                cost.setText(product.costPrice.toString())
-                salePrice.setText(product.salePrice.toString())
+        val rows = mutableListOf<Triple<Spinner, EditText, Pair<EditText, EditText>>>()
+        fun addRow() {
+            val rowBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, 8, 0, 8) }
+            val picker = Spinner(this).apply {
+                adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                    products.map { "${it.name} — الرصيد الحالي: ${it.quantity} ${it.baseUnit}" })
             }
+            val qty = EditText(this).apply { hint = "الكمية المشتراة"; inputType = 8194 }
+            val cost = EditText(this).apply { hint = "كلفة شراء الوحدة"; inputType = 8194 }
+            val salePrice = EditText(this).apply { hint = "سعر البيع الجديد (أدخله يدوياً)"; inputType = 8194 }
+            cost.setText(products.first().costPrice.toString())
+            salePrice.setText(products.first().salePrice.toString())
+            picker.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onNothingSelected(parent: AdapterView<*>?) {}
+                override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                    cost.setText(products[position].costPrice.toString())
+                    salePrice.setText(products[position].salePrice.toString())
+                }
+            }
+            rowBox.addView(label("المادة", 14f, ink, true))
+            rowBox.addView(picker); rowBox.addView(qty); rowBox.addView(cost); rowBox.addView(salePrice)
+            box.addView(rowBox)
+            rows.add(Triple(picker, qty, cost to salePrice))
         }
-        box.addView(label("اختر المادة", 14f))
-        box.addView(picker); box.addView(quantity); box.addView(cost); box.addView(salePrice); box.addView(currencyLabel)
-        val dialog = AlertDialog.Builder(this).setTitle("فاتورة شراء").setView(box)
+        addRow()
+        box.addView(Button(this).apply { text = "＋ إضافة مادة للفاتورة"; setOnClickListener { addRow() } })
+        val dialog = AlertDialog.Builder(this).setTitle("فاتورة شراء متعددة المواد").setView(box)
             .setNegativeButton("إلغاء", null).setPositiveButton("حفظ فاتورة الشراء", null).create()
         dialog.setOnShowListener {
             dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                val product = products.getOrNull(picker.selectedItemPosition) ?: return@setOnClickListener
-                val qty = quantity.text.toString().toDoubleOrNull()
-                val unitCost = cost.text.toString().toDoubleOrNull()
-                val newSalePrice = salePrice.text.toString().toDoubleOrNull()
-                if (qty == null || qty <= 0.0) { quantity.error = "أدخل كمية صحيحة"; return@setOnClickListener }
-                if (unitCost == null || unitCost < 0.0) { cost.error = "أدخل كلفة صحيحة"; return@setOnClickListener }
-                if (newSalePrice == null || newSalePrice < 0.0) { salePrice.error = "أدخل سعر بيع صحيح"; return@setOnClickListener }
-                val total = qty * unitCost
+                val parsed = mutableListOf<PurchaseItem>()
+                var currency: String? = null
+                for ((picker, qtyInput, priceInputs) in rows) {
+                    val product = products.getOrNull(picker.selectedItemPosition) ?: continue
+                    val qty = qtyInput.text.toString().toDoubleOrNull()
+                    val unitCost = priceInputs.first.text.toString().toDoubleOrNull()
+                    val salePrice = priceInputs.second.text.toString().toDoubleOrNull()
+                    if (qty == null || qty <= 0.0) { qtyInput.error = "أدخل كمية صحيحة"; return@setOnClickListener }
+                    if (unitCost == null || unitCost < 0.0) { priceInputs.first.error = "أدخل كلفة صحيحة"; return@setOnClickListener }
+                    if (salePrice == null || salePrice < 0.0) { priceInputs.second.error = "أدخل سعر بيع صحيح"; return@setOnClickListener }
+                    if (currency != null && currency != product.currency) {
+                        info("اختلاف العملة", "يجب أن تكون جميع مواد الفاتورة بنفس العملة."); return@setOnClickListener
+                    }
+                    currency = product.currency
+                    parsed.add(PurchaseItem(purchaseId = 0, productId = product.id,
+                        productNameSnapshot = product.name, quantity = qty, unitCost = unitCost,
+                        salePriceSet = salePrice, lineTotal = qty * unitCost))
+                }
+                if (parsed.isEmpty()) { info("فاتورة شراء", "أضف مادة واحدة على الأقل."); return@setOnClickListener }
+                val total = parsed.sumOf { it.lineTotal }
                 lifecycleScope.launch {
                     try {
-                        val purchase = Purchase(currency = product.currency, subtotal = total, total = total)
-                        val item = PurchaseItem(purchaseId = 0, productId = product.id,
-                            productNameSnapshot = product.name, quantity = qty, unitCost = unitCost,
-                            salePriceSet = newSalePrice, lineTotal = total)
-                        dao.savePurchaseAndAddStock(purchase, item)
+                        val purchase = Purchase(currency = currency ?: "USD", subtotal = total, total = total)
+                        dao.savePurchaseAndAddStock(purchase, parsed)
                         dialog.dismiss()
-                        info("تم حفظ فاتورة الشراء", "إجمالي الشراء: $total ${product.currency}\nتمت إضافة الكمية للمخزون وتحديث كلفة الوحدة وسعر البيع الذي أدخلته.")
+                        info("تم حفظ فاتورة الشراء", "عدد المواد: ${parsed.size}\nإجمالي الشراء: $total ${currency}\nتمت إضافة الكميات وتحديث الكلفة وسعر البيع اليدوي لكل مادة.")
                     } catch (e: Exception) {
                         info("تعذر حفظ فاتورة الشراء", e.message ?: "حدث خطأ غير متوقع.")
                     }
