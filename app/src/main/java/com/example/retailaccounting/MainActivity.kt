@@ -187,7 +187,8 @@ class MainActivity : AppCompatActivity() {
         card("إنشاء فاتورة شراء", "📦") { createPurchase() }
         card("المخزون وقائمة المواد", "▦") { activeTab = "المخزون"; showInventory() }
         card("سجل الفواتير السابقة", "▤") { showInvoiceHistory() }
-        card("مرتجعات المبيعات", "↩") { createSalesReturn() }\n        card("مرتجعات المشتريات", "↪") { createPurchaseReturn() }
+        card("مرتجعات المبيعات", "↩") { createSalesReturn() }
+        card("مرتجعات المشتريات", "↪") { createPurchaseReturn() }
         card("عروض الأسعار وطلبات الشراء", "◆") { info("العروض والطلبات", "تظهر ضمن القوائم الفرعية.") }
     }
 
