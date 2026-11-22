@@ -79,12 +79,16 @@ class MainActivity : AppCompatActivity() {
                 textSize = 14f
                 gravity = Gravity.CENTER
                 setTextColor(if (selected) blue else 0xFF7C858A.toInt())
-                setPadding(5, 15, 5, 13)
+                setPadding(4, 13, 4, 13)
                 setTypeface(typeface, if (selected) Typeface.BOLD else Typeface.NORMAL)
-                if (selected) setBackgroundColor(0xFFEAF3F6.toInt())
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(if (selected) 0xFFE7F1F5.toInt() else android.graphics.Color.TRANSPARENT)
+                    cornerRadius = 18f
+                }
                 setOnClickListener { activeTab = name; buildShell() }
             }
-            tabs.addView(tab, LinearLayout.LayoutParams(0, -2, 1f))
+            val params = LinearLayout.LayoutParams(0, -2, 1f).apply { setMargins(3, 7, 3, 7) }
+            tabs.addView(tab, params)
         }
         root.addView(tabs)
         val scroll = ScrollView(this)
@@ -114,7 +118,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun section(title: String) {
-        content.addView(label(title, 19f, ink, true).apply { setPadding(4, 10, 4, 14) })
+        val heading = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+            setPadding(4, 8, 4, 15)
+        }
+        val accent = View(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF438CA5.toInt())
+                cornerRadius = 5f
+            }
+        }
+        heading.addView(accent, LinearLayout.LayoutParams(5, 27))
+        heading.addView(label(title, 19f, ink, true).apply { setPadding(10, 0, 0, 0) })
+        content.addView(heading)
     }
 
     private fun card(title: String, icon: String = "◆", action: () -> Unit) {
