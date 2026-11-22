@@ -11,6 +11,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.retailaccounting.data.AppDatabase
 import com.example.retailaccounting.data.Product
+import com.example.retailaccounting.data.Purchase
+import com.example.retailaccounting.data.PurchaseItem
 import com.example.retailaccounting.data.Sale
 import com.example.retailaccounting.data.SaleItem
 import kotlinx.coroutines.flow.collectLatest
@@ -112,7 +114,7 @@ class MainActivity : AppCompatActivity() {
     private fun showInvoices() {
         content.removeAllViews(); section("الفواتير والمخزون")
         card("إنشاء فاتورة مبيع", "🛒") { createSale() }
-        card("إنشاء فاتورة شراء", "📦") { info("فاتورة شراء", "شاشة الشراء وزيادة المخزون ضمن مراحل التطوير التالية.") }
+        card("إنشاء فاتورة شراء", "📦") { createPurchase() }
         card("المخزون وقائمة المواد", "▦") { activeTab = "المخزون"; showInventory() }
         card("سجل الفواتير السابقة", "▤") { info("سجل الفواتير", "سجل الفواتير قيد الاستكمال.") }
         card("المرتجعات", "↩") { info("المرتجعات", "إدارة مرتجعات البيع والشراء.") }
@@ -231,6 +233,67 @@ class MainActivity : AppCompatActivity() {
                         info("تم حفظ الفاتورة", "إجمالي الفاتورة: $total ${product.currency}\nتم تحديث المخزون وحفظ كلفة المادة وقت البيع.")
                     } catch (e: Exception) {
                         info("تعذر حفظ الفاتورة", e.message ?: "حدث خطأ غير متوقع.")
+                    }
+                }
+            }
+        }
+        dialog.show()
+    }
+
+
+    private fun createPurchase() {
+        if (products.isEmpty()) {
+            info("فاتورة شراء", "أضف المادة إلى قائمة المواد أولاً، ثم سجّل شراءها من هنا.")
+            return
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 0)
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+        }
+        val picker = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                products.map { "${it.name} — الرصيد الحالي: ${it.quantity} ${it.baseUnit}" })
+        }
+        fun numeric(h: String) = EditText(this).apply { hint = h; textSize = 16f; inputType = 8194 }
+        val quantity = numeric("الكمية المشتراة")
+        val cost = numeric("كلفة شراء الوحدة")
+        val salePrice = numeric("سعر البيع الجديد (أدخله يدوياً)")
+        val currencyLabel = label("العملة: ${products.first().currency}", 14f, ink)
+        picker.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                val product = products[position]
+                currencyLabel.text = "العملة: ${product.currency}"
+                cost.setText(product.costPrice.toString())
+                salePrice.setText(product.salePrice.toString())
+            }
+        }
+        box.addView(label("اختر المادة", 14f))
+        box.addView(picker); box.addView(quantity); box.addView(cost); box.addView(salePrice); box.addView(currencyLabel)
+        val dialog = AlertDialog.Builder(this).setTitle("فاتورة شراء").setView(box)
+            .setNegativeButton("إلغاء", null).setPositiveButton("حفظ فاتورة الشراء", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val product = products.getOrNull(picker.selectedItemPosition) ?: return@setOnClickListener
+                val qty = quantity.text.toString().toDoubleOrNull()
+                val unitCost = cost.text.toString().toDoubleOrNull()
+                val newSalePrice = salePrice.text.toString().toDoubleOrNull()
+                if (qty == null || qty <= 0.0) { quantity.error = "أدخل كمية صحيحة"; return@setOnClickListener }
+                if (unitCost == null || unitCost < 0.0) { cost.error = "أدخل كلفة صحيحة"; return@setOnClickListener }
+                if (newSalePrice == null || newSalePrice < 0.0) { salePrice.error = "أدخل سعر بيع صحيح"; return@setOnClickListener }
+                val total = qty * unitCost
+                lifecycleScope.launch {
+                    try {
+                        val purchase = Purchase(currency = product.currency, subtotal = total, total = total)
+                        val item = PurchaseItem(purchaseId = 0, productId = product.id,
+                            productNameSnapshot = product.name, quantity = qty, unitCost = unitCost,
+                            salePriceSet = newSalePrice, lineTotal = total)
+                        dao.savePurchaseAndAddStock(purchase, item)
+                        dialog.dismiss()
+                        info("تم حفظ فاتورة الشراء", "إجمالي الشراء: $total ${product.currency}\nتمت إضافة الكمية للمخزون وتحديث كلفة الوحدة وسعر البيع الذي أدخلته.")
+                    } catch (e: Exception) {
+                        info("تعذر حفظ فاتورة الشراء", e.message ?: "حدث خطأ غير متوقع.")
                     }
                 }
             }
