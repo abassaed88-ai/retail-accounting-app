@@ -10,6 +10,8 @@ import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.retailaccounting.data.AppDatabase
+import com.example.retailaccounting.data.Customer
+import com.example.retailaccounting.data.Supplier
 import com.example.retailaccounting.data.Product
 import com.example.retailaccounting.data.Purchase
 import com.example.retailaccounting.data.PurchaseItem
@@ -789,6 +791,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createSale() {
+        lifecycleScope.launch { createSaleWithCustomers(dao.observeCustomers().first()) }
+    }
+
+    private fun createSaleWithCustomers(customers: List<Customer>) {
         if (products.isEmpty()) {
             info("فاتورة مبيع", "أضف مادة إلى المخزون أولاً حتى تتمكن من تسجيل عملية بيع.")
             return
@@ -823,6 +829,15 @@ class MainActivity : AppCompatActivity() {
             rows.add(Triple(picker, qty, price))
         }
         addRow()
+        val paymentPicker = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("نقدي", "آجل على حساب عميل"))
+        }
+        val customerPicker = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                customers.map { "${it.name} — ${it.balance} ${it.currency}" }.ifEmpty { listOf("لا يوجد عملاء — أضف عميلاً أولاً") })
+        }
+        box.addView(label("طريقة الدفع", 14f, ink, true)); box.addView(paymentPicker)
+        box.addView(label("العميل (للفواتير الآجلة)", 14f, ink, true)); box.addView(customerPicker)
         val addButton = Button(this).apply { text = "＋ إضافة مادة للفاتورة"; setOnClickListener { addRow() } }
         box.addView(addButton)
         val dialog = AlertDialog.Builder(this).setTitle("فاتورة مبيع متعددة المواد").setView(box)
@@ -850,6 +865,16 @@ class MainActivity : AppCompatActivity() {
                         info("المخزون غير كافٍ", "الكمية المطلوبة من ${product.name} أكبر من المتوفر."); return@setOnClickListener
                     }
                 }
+                val creditSale = paymentPicker.selectedItemPosition == 1
+                val selectedCustomer = customers.getOrNull(customerPicker.selectedItemPosition)
+                if (creditSale && selectedCustomer == null) {
+                    info("العميل مطلوب", "أضف عميلاً وحدده قبل حفظ فاتورة آجلة.")
+                    return@setOnClickListener
+                }
+                if (creditSale && selectedCustomer?.currency != currency) {
+                    info("اختلاف العملة", "عملة حساب العميل يجب أن تطابق عملة الفاتورة.")
+                    return@setOnClickListener
+                }
                 val total = parsed.sumOf { it.second.first * it.second.second }
                 val items = parsed.map { (product, values) ->
                     val (qty, price) = values
@@ -862,7 +887,10 @@ class MainActivity : AppCompatActivity() {
                     try {
                         val sale = Sale(currency = currency,
                             exchangeRateAtSale = dao.getExchangeRate()?.usdToSyp ?: 1.0,
-                            subtotal = total, total = total, paymentType = "CASH")
+                            subtotal = total, total = total,
+                            paymentType = if (creditSale) "CREDIT" else "CASH",
+                            customerName = selectedCustomer?.name,
+                            customerId = if (creditSale) selectedCustomer?.id else null)
                         dao.saveSaleAndDeductStock(sale, items)
                         dialog.dismiss()
                         info("تم حفظ الفاتورة", "عدد المواد: ${items.size}\nإجمالي الفاتورة: $total $currency\nتم تحديث المخزون وحفظ كلفة كل مادة وقت البيع.")
@@ -876,6 +904,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createPurchase() {
+        lifecycleScope.launch { createPurchaseWithSuppliers(dao.observeSuppliers().first()) }
+    }
+
+    private fun createPurchaseWithSuppliers(suppliers: List<Supplier>) {
         if (products.isEmpty()) {
             info("فاتورة شراء", "أضف المادة إلى قائمة المواد أولاً، ثم سجّل شراءها من هنا.")
             return
@@ -910,6 +942,15 @@ class MainActivity : AppCompatActivity() {
             rows.add(Triple(picker, qty, cost to salePrice))
         }
         addRow()
+        val paymentPicker = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("نقدي", "آجل للمورد"))
+        }
+        val supplierPicker = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                suppliers.map { "${it.name} — ${it.balance} ${it.currency}" }.ifEmpty { listOf("لا يوجد موردون — أضف مورداً أولاً") })
+        }
+        box.addView(label("طريقة الدفع", 14f, ink, true)); box.addView(paymentPicker)
+        box.addView(label("المورد (للفواتير الآجلة)", 14f, ink, true)); box.addView(supplierPicker)
         box.addView(Button(this).apply { text = "＋ إضافة مادة للفاتورة"; setOnClickListener { addRow() } })
         val dialog = AlertDialog.Builder(this).setTitle("فاتورة شراء متعددة المواد").setView(box)
             .setNegativeButton("إلغاء", null).setPositiveButton("حفظ فاتورة الشراء", null).create()
@@ -934,10 +975,23 @@ class MainActivity : AppCompatActivity() {
                         salePriceSet = salePrice, lineTotal = qty * unitCost))
                 }
                 if (parsed.isEmpty()) { info("فاتورة شراء", "أضف مادة واحدة على الأقل."); return@setOnClickListener }
+                val creditPurchase = paymentPicker.selectedItemPosition == 1
+                val selectedSupplier = suppliers.getOrNull(supplierPicker.selectedItemPosition)
+                if (creditPurchase && selectedSupplier == null) {
+                    info("المورد مطلوب", "أضف مورداً وحدده قبل حفظ فاتورة شراء آجلة.")
+                    return@setOnClickListener
+                }
+                if (creditPurchase && selectedSupplier?.currency != currency) {
+                    info("اختلاف العملة", "عملة حساب المورد يجب أن تطابق عملة الفاتورة.")
+                    return@setOnClickListener
+                }
                 val total = parsed.sumOf { it.lineTotal }
                 lifecycleScope.launch {
                     try {
-                        val purchase = Purchase(currency = currency ?: "USD", subtotal = total, total = total)
+                        val purchase = Purchase(currency = currency ?: "USD", subtotal = total, total = total,
+                            supplierName = selectedSupplier?.name ?: "",
+                            paymentType = if (creditPurchase) "CREDIT" else "CASH",
+                            supplierId = if (creditPurchase) selectedSupplier?.id else null)
                         dao.savePurchaseAndAddStock(purchase, parsed)
                         dialog.dismiss()
                         info("تم حفظ فاتورة الشراء", "عدد المواد: ${parsed.size}\nإجمالي الشراء: $total ${currency}\nتمت إضافة الكميات وتحديث الكلفة وسعر البيع اليدوي لكل مادة.")
