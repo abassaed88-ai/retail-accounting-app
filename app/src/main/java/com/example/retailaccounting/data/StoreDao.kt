@@ -76,6 +76,9 @@ abstract class StoreDao {
     @Query("SELECT * FROM purchase_items WHERE purchaseId = :purchaseId ORDER BY id")
     abstract suspend fun getPurchaseItems(purchaseId: Long): List<PurchaseItem>
 
+    @Query("SELECT sales.currency AS currency, COALESCE(SUM(sale_items.lineTotal), 0) AS revenue, COALESCE(SUM(sale_items.unitCostSnapshot * sale_items.quantityInBaseUnit), 0) AS cost FROM sale_items INNER JOIN sales ON sales.id = sale_items.saleId GROUP BY sales.currency")
+    abstract suspend fun getProfitSummary(): List<ProfitSummary>
+
     @Insert
     abstract suspend fun insertCustomer(customer: Customer): Long
 
