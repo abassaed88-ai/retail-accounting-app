@@ -37,7 +37,8 @@ abstract class StoreDao {
     abstract suspend fun insertSaleItems(items: List<SaleItem>)
 
 
-    @Query("UPDATE products SET quantity = quantity + :quantity, costPrice = :unitCost, salePrice = :salePrice WHERE id = :productId")
+    // Keep the inventory unit cost as a moving weighted average; each purchase item still retains its own historical unit cost.
+    @Query("UPDATE products SET costPrice = CASE WHEN quantity + :quantity > 0 THEN ((quantity * costPrice) + (:quantity * :unitCost)) / (quantity + :quantity) ELSE :unitCost END, quantity = quantity + :quantity, salePrice = :salePrice WHERE id = :productId")
     abstract suspend fun receiveStock(productId: Long, quantity: Double, unitCost: Double, salePrice: Double): Int
 
     @Insert
@@ -184,7 +185,7 @@ abstract class StoreDao {
     abstract suspend fun getPurchaseItems(purchaseId: Long): List<PurchaseItem>
 
     @Query("SELECT currencies.currency AS currency, COALESCE((SELECT SUM(sale_items.lineTotal) FROM sale_items INNER JOIN sales ON sales.id = sale_items.saleId WHERE sales.currency = currencies.currency), 0) AS revenue, COALESCE((SELECT SUM(sale_items.unitCostSnapshot * sale_items.quantityInBaseUnit) FROM sale_items INNER JOIN sales ON sales.id = sale_items.saleId WHERE sales.currency = currencies.currency), 0) AS cost, COALESCE((SELECT SUM(expenses.amount) FROM expenses WHERE expenses.currency = currencies.currency), 0) AS expenses FROM (SELECT currency FROM sales UNION SELECT currency FROM expenses) AS currencies")
-    abstract suspend fun getProfitSummary(): List<ProfitSummary>
+    @Query("SELECT currencies.currency AS currency, COALESCE((SELECT SUM(si.lineTotal) FROM sale_items si INNER JOIN sales s ON s.id = si.saleId WHERE s.currency = currencies.currency), 0) - COALESCE((SELECT SUM(sri.lineTotal) FROM sales_return_items sri INNER JOIN sales_returns sr ON sr.id = sri.returnId WHERE sr.currency = currencies.currency), 0) AS revenue, COALESCE((SELECT SUM(si.unitCostSnapshot * si.quantityInBaseUnit) FROM sale_items si INNER JOIN sales s ON s.id = si.saleId WHERE s.currency = currencies.currency), 0) - COALESCE((SELECT SUM(si.unitCostSnapshot * sri.quantityInBaseUnit) FROM sales_return_items sri INNER JOIN sales_returns sr ON sr.id = sri.returnId INNER JOIN sale_items si ON si.id = sri.saleItemId WHERE sr.currency = currencies.currency), 0) AS cost, COALESCE((SELECT SUM(e.amount) FROM expenses e WHERE e.currency = currencies.currency), 0) AS expenses FROM (SELECT currency FROM sales UNION SELECT currency FROM expenses) AS currencies")
 
     @Insert
     abstract suspend fun insertCustomer(customer: Customer): Long

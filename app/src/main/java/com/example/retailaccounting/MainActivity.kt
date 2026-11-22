@@ -187,6 +187,7 @@ class MainActivity : AppCompatActivity() {
         card("إنشاء فاتورة شراء", "📦") { createPurchase() }
         card("المخزون وقائمة المواد", "▦") { activeTab = "المخزون"; showInventory() }
         card("سجل الفواتير السابقة", "▤") { showInvoiceHistory() }
+        card("حركة المبيع اليومية", "▥") { showDailySalesMovement() }
         card("مرتجعات المبيعات", "↩") { createSalesReturn() }
         card("مرتجعات المشتريات", "↪") { createPurchaseReturn() }
         card("عروض الأسعار وطلبات الشراء", "◆") { info("العروض والطلبات", "تظهر ضمن القوائم الفرعية.") }
@@ -235,6 +236,99 @@ class MainActivity : AppCompatActivity() {
                     .show()
             } catch (e: Exception) {
                 info("سجل الفواتير", e.message ?: "تعذر تحميل سجل الفواتير.")
+            }
+        }
+    }
+
+
+    private fun showDailySalesMovement() {
+        content.removeAllViews()
+        section("حركة المبيع اليومية")
+        card("العودة إلى الفواتير", "‹") { showInvoices() }
+        lifecycleScope.launch {
+            try {
+                val calendar = java.util.Calendar.getInstance()
+                calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                calendar.set(java.util.Calendar.MINUTE, 0)
+                calendar.set(java.util.Calendar.SECOND, 0)
+                calendar.set(java.util.Calendar.MILLISECOND, 0)
+                val startOfDay = calendar.timeInMillis
+                calendar.add(java.util.Calendar.DAY_OF_MONTH, 1)
+                val endOfDay = calendar.timeInMillis
+                val todaysSales = dao.observeSales().first()
+                    .filter { it.createdAt >= startOfDay && it.createdAt < endOfDay }
+                    .sortedByDescending { it.createdAt }
+
+                val allRows = todaysSales.flatMap { sale ->
+                    dao.getSaleItems(sale.id).map { item -> sale to item }
+                }
+                if (allRows.isEmpty()) {
+                    content.addView(label("لا توجد مبيعات مسجلة اليوم.", 15f, 0xFF7B858A.toInt()))
+                    return@launch
+                }
+
+                val currencies = todaysSales.map { it.currency }.distinct()
+                currencies.forEach { currency ->
+                    val salesForCurrency = todaysSales.filter { it.currency == currency }
+                    val rowsForCurrency = allRows.filter { it.first.currency == currency }
+                    val revenue = salesForCurrency.sumOf { it.total }
+                    val cost = rowsForCurrency.sumOf { (_, item) -> item.unitCostSnapshot * item.quantityInBaseUnit }
+                    val profit = revenue - cost
+                    val rate = salesForCurrency.firstOrNull()?.exchangeRateAtSale ?: 1.0
+                    content.addView(label(
+                        "ملخص $currency: المبيعات ${String.format(java.util.Locale.US, "%.2f", revenue)} | الكلفة ${String.format(java.util.Locale.US, "%.2f", cost)} | الربح الإجمالي ${String.format(java.util.Locale.US, "%.2f", profit)}",
+                        14f, ink, true
+                    ).apply { setPadding(0, 8, 0, 12) })
+                    content.addView(label(
+                        "سعر الصرف المحفوظ بالفواتير: ${String.format(java.util.Locale.US, "%.2f", rate)} ليرة لكل 1 USD",
+                        12f, 0xFF7B858A.toInt()
+                    ).apply { setPadding(0, 0, 0, 12) })
+                }
+
+                val horizontal = HorizontalScrollView(this@MainActivity)
+                val table = TableLayout(this@MainActivity).apply {
+                    isStretchAllColumns = true
+                    setPadding(0, 4, 0, 4)
+                }
+                fun cell(value: String, header: Boolean = false): TextView =
+                    TextView(this@MainActivity).apply {
+                        text = value
+                        textSize = 12f
+                        setTextColor(if (header) android.graphics.Color.WHITE else ink)
+                        setTypeface(typeface, if (header) Typeface.BOLD else Typeface.NORMAL)
+                        gravity = Gravity.CENTER
+                        setPadding(10, 12, 10, 12)
+                        if (header) setBackgroundColor(blue)
+                    }
+                val header = TableRow(this@MainActivity)
+                listOf("رقم الفاتورة", "الوقت", "اسم المادة", "الكمية", "سعر المبيع", "الإجمالي", "الربح", "سعر الصرف").forEach {
+                    header.addView(cell(it, true))
+                }
+                table.addView(header)
+                allRows.forEach { (sale, item) ->
+                    val row = TableRow(this@MainActivity)
+                    val time = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
+                        .format(java.util.Date(sale.createdAt))
+                    val lineProfit = item.lineTotal - (item.unitCostSnapshot * item.quantityInBaseUnit)
+                    listOf(
+                        "#${sale.id}", time, item.productNameSnapshot,
+                        String.format(java.util.Locale.US, "%.2f", item.quantityInSelectedUnit) + " " + item.selectedUnit,
+                        String.format(java.util.Locale.US, "%.2f", item.unitPrice) + " " + sale.currency,
+                        String.format(java.util.Locale.US, "%.2f", item.lineTotal),
+                        String.format(java.util.Locale.US, "%.2f", lineProfit),
+                        String.format(java.util.Locale.US, "%.2f", sale.exchangeRateAtSale)
+                    ).forEach { row.addView(cell(it)) }
+                    table.addView(row)
+                    val separator = View(this@MainActivity).apply { setBackgroundColor(0xFFE5EAEC.toInt()) }
+                    table.addView(separator, TableLayout.LayoutParams(-1, 1))
+                }
+                horizontal.addView(table)
+                content.addView(horizontal, LinearLayout.LayoutParams(-1, -2))
+                content.addView(label("عدد الفواتير: ${todaysSales.size} | عدد بنود البيع: ${allRows.size}", 13f, 0xFF7B858A.toInt()).apply {
+                    setPadding(0, 14, 0, 0)
+                })
+            } catch (e: Exception) {
+                info("حركة المبيع اليومية", e.message ?: "تعذر تحميل حركة المبيعات.")
             }
         }
     }
