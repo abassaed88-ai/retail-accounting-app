@@ -11,9 +11,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         Product::class, ExchangeRate::class, Sale::class, SaleItem::class,
         Customer::class, Supplier::class, Expense::class, CashMovement::class,
-        Purchase::class, PurchaseItem::class, PartyTransaction::class
+        Purchase::class, PurchaseItem::class, PartyTransaction::class, InventoryMovement::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -34,6 +34,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE TABLE IF NOT EXISTS inventory_movements (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, productId INTEGER NOT NULL, productName TEXT NOT NULL, direction TEXT NOT NULL, quantity REAL NOT NULL, note TEXT NOT NULL, createdAt INTEGER NOT NULL)")
+            }
+        }
+
         @Volatile private var INSTANCE: AppDatabase? = null
 
         fun getInstance(context: Context): AppDatabase =
@@ -46,7 +52,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // v0.2 is an early prototype. Destructive migration is acceptable only
                     // before real business data is entered; add explicit migrations before release.
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { INSTANCE = it }
             }
