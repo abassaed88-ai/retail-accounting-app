@@ -91,3 +91,25 @@ data class CashMovement(
     val reason: String,
     val createdAt: Long = System.currentTimeMillis()
 )
+
+@Entity(tableName = "purchases")
+data class Purchase(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val createdAt: Long = System.currentTimeMillis(),
+    val currency: String,
+    val subtotal: Double,
+    val total: Double,
+    val supplierName: String = ""
+)
+
+@Entity(tableName = "purchase_items")
+data class PurchaseItem(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val purchaseId: Long,
+    val productId: Long,
+    val productNameSnapshot: String,
+    val quantity: Double,
+    val unitCost: Double,
+    val salePriceSet: Double,
+    val lineTotal: Double
+)
