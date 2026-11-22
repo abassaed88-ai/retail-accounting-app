@@ -276,11 +276,11 @@ class MainActivity : AppCompatActivity() {
                     val profit = revenue - cost
                     val rate = salesForCurrency.firstOrNull()?.exchangeRateAtSale ?: 1.0
                     content.addView(label(
-                        "ملخص $currency: المبيعات \${String.format(java.util.Locale.US, "%.2f", revenue)} | الكلفة \${String.format(java.util.Locale.US, "%.2f", cost)} | الربح الإجمالي \${String.format(java.util.Locale.US, "%.2f", profit)}",
+                        "ملخص $currency: المبيعات ${String.format(java.util.Locale.US, "%.2f", revenue)} | الكلفة ${String.format(java.util.Locale.US, "%.2f", cost)} | الربح الإجمالي ${String.format(java.util.Locale.US, "%.2f", profit)}",
                         14f, ink, true
                     ).apply { setPadding(0, 8, 0, 12) })
                     content.addView(label(
-                        "سعر الصرف المحفوظ بالفواتير: \${String.format(java.util.Locale.US, "%.2f", rate)} ليرة لكل 1 USD",
+                        "سعر الصرف المحفوظ بالفواتير: ${String.format(java.util.Locale.US, "%.2f", rate)} ليرة لكل 1 USD",
                         12f, 0xFF7B858A.toInt()
                     ).apply { setPadding(0, 0, 0, 12) })
                 }
@@ -311,7 +311,7 @@ class MainActivity : AppCompatActivity() {
                         .format(java.util.Date(sale.createdAt))
                     val lineProfit = item.lineTotal - (item.unitCostSnapshot * item.quantityInBaseUnit)
                     listOf(
-                        "#\${sale.id}", time, item.productNameSnapshot,
+                        "#${sale.id}", time, item.productNameSnapshot,
                         String.format(java.util.Locale.US, "%.2f", item.quantityInSelectedUnit) + " " + item.selectedUnit,
                         String.format(java.util.Locale.US, "%.2f", item.unitPrice) + " " + sale.currency,
                         String.format(java.util.Locale.US, "%.2f", item.lineTotal),
@@ -324,7 +324,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 horizontal.addView(table)
                 content.addView(horizontal, LinearLayout.LayoutParams(-1, -2))
-                content.addView(label("عدد الفواتير: \${todaysSales.size} | عدد بنود البيع: \${allRows.size}", 13f, 0xFF7B858A.toInt()).apply {
+                content.addView(label("عدد الفواتير: ${todaysSales.size} | عدد بنود البيع: ${allRows.size}", 13f, 0xFF7B858A.toInt()).apply {
                     setPadding(0, 14, 0, 0)
                 })
             } catch (e: Exception) {
