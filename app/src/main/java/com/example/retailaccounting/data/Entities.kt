@@ -126,6 +126,17 @@ data class PartyTransaction(
     val createdAt: Long = System.currentTimeMillis()
 )
 
+@Entity(tableName = "inventory_movements")
+data class InventoryMovement(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val productId: Long,
+    val productName: String,
+    val direction: String,
+    val quantity: Double,
+    val note: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 data class ProfitSummary(
     val currency: String,
     val revenue: Double,
