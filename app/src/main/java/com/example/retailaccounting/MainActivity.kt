@@ -16,6 +16,7 @@ import com.example.retailaccounting.data.PurchaseItem
 import com.example.retailaccounting.data.Sale
 import com.example.retailaccounting.data.SaleItem
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -116,9 +117,56 @@ class MainActivity : AppCompatActivity() {
         card("إنشاء فاتورة مبيع", "🛒") { createSale() }
         card("إنشاء فاتورة شراء", "📦") { createPurchase() }
         card("المخزون وقائمة المواد", "▦") { activeTab = "المخزون"; showInventory() }
-        card("سجل الفواتير السابقة", "▤") { info("سجل الفواتير", "سجل الفواتير قيد الاستكمال.") }
+        card("سجل الفواتير السابقة", "▤") { showInvoiceHistory() }
         card("المرتجعات", "↩") { info("المرتجعات", "إدارة مرتجعات البيع والشراء.") }
         card("عروض الأسعار وطلبات الشراء", "◆") { info("العروض والطلبات", "تظهر ضمن القوائم الفرعية.") }
+    }
+
+
+    private fun showInvoiceHistory() {
+        lifecycleScope.launch {
+            try {
+                val sales = dao.observeSales().first()
+                val purchases = dao.observePurchases().first()
+                val entries = (sales.map { sale ->
+                    Triple(sale.createdAt, "مبيع #${sale.id}", "إجمالي: ${sale.total} ${sale.currency}")
+                } + purchases.map { purchase ->
+                    Triple(purchase.createdAt, "شراء #${purchase.id}", "إجمالي: ${purchase.total} ${purchase.currency}")
+                }).sortedByDescending { it.first }
+                if (entries.isEmpty()) {
+                    info("سجل الفواتير", "لا توجد فواتير محفوظة حتى الآن.")
+                    return@launch
+                }
+                val labels = entries.map { entry ->
+                    val date = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+                        .format(java.util.Date(entry.first))
+                    "${entry.second} — ${entry.third}\n$date"
+                }.toTypedArray()
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("سجل فواتير البيع والشراء")
+                    .setItems(labels) { _, which ->
+                        val selected = entries[which]
+                        lifecycleScope.launch {
+                            val detail = if (selected.second.startsWith("مبيع")) {
+                                val id = selected.second.substringAfter("#").toLong()
+                                dao.getSaleItems(id).joinToString("\n") {
+                                    "${it.productNameSnapshot}: ${it.quantityInSelectedUnit} ${it.selectedUnit} × ${it.unitPrice} = ${it.lineTotal}"
+                                }
+                            } else {
+                                val id = selected.second.substringAfter("#").toLong()
+                                dao.getPurchaseItems(id).joinToString("\n") {
+                                    "${it.productNameSnapshot}: ${it.quantity} × ${it.unitCost} = ${it.lineTotal} (سعر البيع المحدد: ${it.salePriceSet})"
+                                }
+                            }
+                            info(selected.second, if (detail.isBlank()) "لا توجد تفاصيل لهذه الفاتورة." else detail)
+                        }
+                    }
+                    .setPositiveButton("إغلاق", null)
+                    .show()
+            } catch (e: Exception) {
+                info("سجل الفواتير", e.message ?: "تعذر تحميل سجل الفواتير.")
+            }
+        }
     }
 
     private fun showInventory() {
