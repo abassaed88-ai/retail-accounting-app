@@ -91,6 +91,42 @@ abstract class StoreDao {
     @Query("SELECT * FROM suppliers ORDER BY name")
     abstract fun observeSuppliers(): Flow<List<Supplier>>
 
+
+    @Insert
+    abstract suspend fun insertPartyTransaction(transaction: PartyTransaction): Long
+
+    @Query("UPDATE customers SET balance = balance + :delta WHERE id = :partyId")
+    abstract suspend fun adjustCustomerBalance(partyId: Long, delta: Double): Int
+
+    @Query("UPDATE suppliers SET balance = balance + :delta WHERE id = :partyId")
+    abstract suspend fun adjustSupplierBalance(partyId: Long, delta: Double): Int
+
+    @Query("SELECT * FROM party_transactions WHERE partyType = :partyType AND partyId = :partyId ORDER BY createdAt DESC")
+    abstract suspend fun getPartyTransactions(partyType: String, partyId: Long): List<PartyTransaction>
+
+    @Transaction
+    open suspend fun savePartyTransaction(transaction: PartyTransaction): Long {
+        require(transaction.amount > 0.0) { "المبلغ يجب أن يكون أكبر من صفر" }
+        val delta = if (transaction.action == "DEBT") transaction.amount else -transaction.amount
+        val changed = if (transaction.partyType == "CUSTOMER") {
+            adjustCustomerBalance(transaction.partyId, delta)
+        } else {
+            adjustSupplierBalance(transaction.partyId, delta)
+        }
+        check(changed == 1) { "الحساب المحدد غير موجود" }
+        val id = insertPartyTransaction(transaction)
+        if (transaction.action == "PAYMENT") {
+            insertCashMovement(CashMovement(
+                direction = if (transaction.partyType == "CUSTOMER") "IN" else "OUT",
+                amount = transaction.amount,
+                currency = transaction.currency,
+                reason = if (transaction.partyType == "CUSTOMER") "تسديد عميل: ${transaction.note}" else "تسديد مورد: ${transaction.note}",
+                createdAt = transaction.createdAt
+            ))
+        }
+        return id
+    }
+
     @Insert
     abstract suspend fun insertExpense(expense: Expense): Long
     @Transaction
