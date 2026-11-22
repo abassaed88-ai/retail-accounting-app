@@ -11,9 +11,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     entities = [
         Product::class, ExchangeRate::class, Sale::class, SaleItem::class,
         Customer::class, Supplier::class, Expense::class, CashMovement::class,
-        Purchase::class, PurchaseItem::class
+        Purchase::class, PurchaseItem::class, PartyTransaction::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,6 +24,13 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("CREATE TABLE IF NOT EXISTS purchases (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, createdAt INTEGER NOT NULL, currency TEXT NOT NULL, subtotal REAL NOT NULL, total REAL NOT NULL, supplierName TEXT NOT NULL)")
                 database.execSQL("CREATE TABLE IF NOT EXISTS purchase_items (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, purchaseId INTEGER NOT NULL, productId INTEGER NOT NULL, productNameSnapshot TEXT NOT NULL, quantity REAL NOT NULL, unitCost REAL NOT NULL, salePriceSet REAL NOT NULL, lineTotal REAL NOT NULL)")
+            }
+        }
+
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE TABLE IF NOT EXISTS party_transactions (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, partyType TEXT NOT NULL, partyId INTEGER NOT NULL, action TEXT NOT NULL, amount REAL NOT NULL, currency TEXT NOT NULL, note TEXT NOT NULL, createdAt INTEGER NOT NULL)")
             }
         }
 
@@ -39,7 +46,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // v0.2 is an early prototype. Destructive migration is acceptable only
                     // before real business data is entered; add explicit migrations before release.
                     .fallbackToDestructiveMigration()
-                    .addMigrations(MIGRATION_2_3)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { INSTANCE = it }
             }
