@@ -78,9 +78,10 @@ class MainActivity : AppCompatActivity() {
         scroll.addView(content)
         root.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         root.addView(TextView(this).apply {
-            text = "↶       0                         الصندوق الرئيسي"
+            text = "↶       الصندوق الرئيسي"
             textSize = 17f; setTextColor(-1); setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER; setPadding(12, 15, 12, 15); setBackgroundColor(blue)
+            setOnClickListener { showCashbox() }
         })
         setContentView(root)
         when (activeTab) {
@@ -186,9 +187,37 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    private fun showCashbox() {
+        lifecycleScope.launch {
+            try {
+                val movements = dao.observeCashMovements().first()
+                if (movements.isEmpty()) {
+                    info("الصندوق الرئيسي", "لا توجد حركات مالية مسجلة حتى الآن.")
+                    return@launch
+                }
+                val currencies = movements.map { it.currency }.distinct().sorted()
+                val summary = currencies.joinToString("\\n") { currency ->
+                    val incoming = movements.filter { it.currency == currency && it.direction == "IN" }.sumOf { it.amount }
+                    val outgoing = movements.filter { it.currency == currency && it.direction == "OUT" }.sumOf { it.amount }
+                    "$currency — المقبوضات: $incoming | المدفوعات: $outgoing | الرصيد: ${incoming - outgoing}"
+                }
+                val latest = movements.take(30).joinToString("\\n\\n") { movement ->
+                    val date = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+                        .format(java.util.Date(movement.createdAt))
+                    val direction = if (movement.direction == "IN") "قبض" else "دفع"
+                    "$direction: ${movement.amount} ${movement.currency}\\n${movement.reason}\\n$date"
+                }
+                info("الصندوق الرئيسي", "$summary\\n\\nآخر الحركات:\\n$latest")
+            } catch (e: Exception) {
+                info("الصندوق الرئيسي", e.message ?: "تعذر تحميل حركة الصندوق.")
+            }
+        }
+    }
+
     private fun showAccounts() {
         content.removeAllViews(); section("الحسابات والصندوق")
-        card("حركة الصندوق", "▣") { info("الصندوق", "ملخص المقبوضات والمدفوعات.") }
+        card("حركة الصندوق", "▣") { showCashbox() }
         card("الديون والحسابات", "♙") { info("الحسابات", "قوائم العملاء والموردين وأرصدتهم.") }
         card("قبض من حساب / دفع لحساب", "⇄") { info("القبض والدفع", "تسجيل الحركات وربطها برصيد الحساب.") }
         card("تسجيل المصاريف", "−") { info("المصاريف", "تسجيل المصروفات وتصنيفها.") }
