@@ -37,7 +37,8 @@ abstract class StoreDao {
     abstract suspend fun insertSaleItems(items: List<SaleItem>)
 
 
-    @Query("UPDATE products SET quantity = quantity + :quantity, costPrice = :unitCost, salePrice = :salePrice WHERE id = :productId")
+    // Keep the inventory unit cost as a moving weighted average; each purchase item still retains its own historical unit cost.
+    @Query("UPDATE products SET costPrice = CASE WHEN quantity + :quantity > 0 THEN ((quantity * costPrice) + (:quantity * :unitCost)) / (quantity + :quantity) ELSE :unitCost END, quantity = quantity + :quantity, salePrice = :salePrice WHERE id = :productId")
     abstract suspend fun receiveStock(productId: Long, quantity: Double, unitCost: Double, salePrice: Double): Int
 
     @Insert
