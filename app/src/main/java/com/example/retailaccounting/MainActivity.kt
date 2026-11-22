@@ -196,9 +196,9 @@ class MainActivity : AppCompatActivity() {
                 val sales = dao.observeSales().first()
                 val purchases = dao.observePurchases().first()
                 val entries = (sales.map { sale ->
-                    Triple(sale.createdAt, "مبيع #${sale.id}", "إجمالي: ${sale.total} ${sale.currency}")
+                    Triple(sale.createdAt, "مبيع #${sale.id}", "إجمالي: ${sale.total} ${sale.currency} — ${if (sale.paymentType == "CREDIT") "آجل: ${sale.customerName ?: "عميل"}" else "نقدي"}")
                 } + purchases.map { purchase ->
-                    Triple(purchase.createdAt, "شراء #${purchase.id}", "إجمالي: ${purchase.total} ${purchase.currency}")
+                    Triple(purchase.createdAt, "شراء #${purchase.id}", "إجمالي: ${purchase.total} ${purchase.currency} — ${if (purchase.paymentType == "CREDIT") "آجل: ${purchase.supplierName}" else "نقدي"}")
                 }).sortedByDescending { it.first }
                 if (entries.isEmpty()) {
                     info("سجل الفواتير", "لا توجد فواتير محفوظة حتى الآن.")
