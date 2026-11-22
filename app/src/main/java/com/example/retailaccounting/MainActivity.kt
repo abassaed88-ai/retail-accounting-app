@@ -740,12 +740,53 @@ class MainActivity : AppCompatActivity() {
 
     private fun showSettings() {
         content.removeAllViews(); section("الإعدادات")
-        card("العملة وسعر الصرف", "$") { info("العملة", "إعداد العملة وسعر الصرف.") }
+        card("العملة وسعر الصرف", "$") { editExchangeRate() }
         card("النسخ الاحتياطي والاستعادة", "☁") { info("النسخ الاحتياطي", "إضافة تصدير واستعادة قاعدة البيانات والتحقق من سلامتها.") }
         card("حول التطبيق", "ⓘ") { info("Good Girl", "تطبيق محاسبة وإدارة مخزون للمحل.") }
     }
 
 
+
+    private fun editExchangeRate() {
+        lifecycleScope.launch {
+            val current = dao.getExchangeRate()?.usdToSyp
+            val input = EditText(this@MainActivity).apply {
+                hint = "عدد الليرات السورية مقابل 1 دولار"
+                inputType = 8194
+                if (current != null) setText(current.toString())
+            }
+            val box = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(24, 8, 24, 0)
+                layoutDirection = View.LAYOUT_DIRECTION_RTL
+                addView(label("سعر صرف 1 USD مقابل SYP", 14f, ink, true))
+                addView(input)
+            }
+            val dialog = AlertDialog.Builder(this@MainActivity)
+                .setTitle("إعداد سعر الصرف")
+                .setView(box).setNegativeButton("إلغاء", null)
+                .setPositiveButton("حفظ", null).create()
+            dialog.setOnShowListener {
+                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                    val rate = input.text.toString().toDoubleOrNull()
+                    if (rate == null || rate <= 0.0) {
+                        input.error = "أدخل سعر صرف أكبر من صفر"
+                        return@setOnClickListener
+                    }
+                    lifecycleScope.launch {
+                        try {
+                            dao.saveExchangeRate(com.example.retailaccounting.data.ExchangeRate(usdToSyp = rate))
+                            dialog.dismiss()
+                            info("تم الحفظ", "تم تحديث سعر الصرف. سيُحفظ السعر المستخدم مع فواتير البيع الجديدة.")
+                        } catch (e: Exception) {
+                            info("تعذر الحفظ", e.message ?: "حدث خطأ أثناء حفظ سعر الصرف.")
+                        }
+                    }
+                }
+            }
+            dialog.show()
+        }
+    }
 
     private fun createSale() {
         if (products.isEmpty()) {
