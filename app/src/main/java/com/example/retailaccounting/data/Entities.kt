@@ -113,3 +113,9 @@ data class PurchaseItem(
     val salePriceSet: Double,
     val lineTotal: Double
 )
+
+data class ProfitSummary(
+    val currency: String,
+    val revenue: Double,
+    val cost: Double
+)
