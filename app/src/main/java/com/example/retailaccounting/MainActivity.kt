@@ -11,6 +11,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.example.retailaccounting.data.AppDatabase
 import com.example.retailaccounting.data.Product
+import com.example.retailaccounting.data.Sale
+import com.example.retailaccounting.data.SaleItem
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -109,7 +111,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showInvoices() {
         content.removeAllViews(); section("الفواتير والمخزون")
-        card("إنشاء فاتورة مبيع", "🛒") { info("فاتورة مبيع", "شاشة البيع وربطها بالمخزون ضمن مراحل التطوير التالية.") }
+        card("إنشاء فاتورة مبيع", "🛒") { createSale() }
         card("إنشاء فاتورة شراء", "📦") { info("فاتورة شراء", "شاشة الشراء وزيادة المخزون ضمن مراحل التطوير التالية.") }
         card("المخزون وقائمة المواد", "▦") { activeTab = "المخزون"; showInventory() }
         card("سجل الفواتير السابقة", "▤") { info("سجل الفواتير", "سجل الفواتير قيد الاستكمال.") }
@@ -156,6 +158,84 @@ class MainActivity : AppCompatActivity() {
         card("العملة وسعر الصرف", "$") { info("العملة", "إعداد العملة وسعر الصرف.") }
         card("النسخ الاحتياطي والاستعادة", "☁") { info("النسخ الاحتياطي", "إضافة تصدير واستعادة قاعدة البيانات والتحقق من سلامتها.") }
         card("حول التطبيق", "ⓘ") { info("Good Girl", "تطبيق محاسبة وإدارة مخزون للمحل.") }
+    }
+
+
+    private fun createSale() {
+        if (products.isEmpty()) {
+            info("فاتورة مبيع", "أضف مادة إلى المخزون أولاً حتى تتمكن من تسجيل عملية بيع.")
+            return
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 8, 24, 0)
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+        }
+        val productPicker = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item,
+                products.map { "${it.name} — المتوفر: ${it.quantity} ${it.baseUnit}" })
+        }
+        fun numberInput(hintText: String) = EditText(this).apply {
+            hint = hintText
+            textSize = 16f
+            inputType = 8194
+        }
+        val quantityInput = numberInput("الكمية المباعة")
+        val priceInput = numberInput("سعر بيع الوحدة")
+        val currencyLabel = label("العملة: ${products.first().currency}", 14f, ink)
+        productPicker.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                currencyLabel.text = "العملة: ${products[position].currency}"
+                priceInput.setText(products[position].salePrice.toString())
+            }
+        }
+        box.addView(label("اختر المادة", 14f))
+        box.addView(productPicker)
+        box.addView(quantityInput)
+        box.addView(priceInput)
+        box.addView(currencyLabel)
+        val dialog = AlertDialog.Builder(this).setTitle("فاتورة مبيع").setView(box)
+            .setNegativeButton("إلغاء", null).setPositiveButton("حفظ الفاتورة", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val product = products.getOrNull(productPicker.selectedItemPosition) ?: return@setOnClickListener
+                val qty = quantityInput.text.toString().toDoubleOrNull()
+                val price = priceInput.text.toString().toDoubleOrNull()
+                if (qty == null || qty <= 0.0) { quantityInput.error = "أدخل كمية صحيحة"; return@setOnClickListener }
+                if (price == null || price < 0.0) { priceInput.error = "أدخل سعر بيع صحيح"; return@setOnClickListener }
+                if (qty > product.quantity) { quantityInput.error = "الكمية أكبر من المتوفر في المخزون"; return@setOnClickListener }
+                val total = qty * price
+                lifecycleScope.launch {
+                    try {
+                        val sale = Sale(
+                            currency = product.currency,
+                            exchangeRateAtSale = dao.getExchangeRate()?.usdToSyp ?: 1.0,
+                            subtotal = total,
+                            total = total,
+                            paymentType = "CASH"
+                        )
+                        val item = SaleItem(
+                            saleId = 0, productId = product.id,
+                            productNameSnapshot = product.name,
+                            quantityInSelectedUnit = qty,
+                            selectedUnit = product.baseUnit,
+                            baseUnitsPerSelectedUnit = 1.0,
+                            quantityInBaseUnit = qty,
+                            unitPrice = price,
+                            unitCostSnapshot = product.costPrice,
+                            lineTotal = total
+                        )
+                        dao.saveSaleAndDeductStock(sale, listOf(item))
+                        dialog.dismiss()
+                        info("تم حفظ الفاتورة", "إجمالي الفاتورة: $total ${product.currency}\nتم تحديث المخزون وحفظ كلفة المادة وقت البيع.")
+                    } catch (e: Exception) {
+                        info("تعذر حفظ الفاتورة", e.message ?: "حدث خطأ غير متوقع.")
+                    }
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun addProduct() {
