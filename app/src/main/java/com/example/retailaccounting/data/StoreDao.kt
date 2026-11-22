@@ -93,6 +93,20 @@ abstract class StoreDao {
 
     @Insert
     abstract suspend fun insertExpense(expense: Expense): Long
+    @Transaction
+    open suspend fun saveExpenseAndCashMovement(expense: Expense): Long {
+        require(expense.title.isNotBlank()) { "أدخل بيان المصروف" }
+        require(expense.amount > 0.0) { "قيمة المصروف يجب أن تكون أكبر من صفر" }
+        val id = insertExpense(expense)
+        insertCashMovement(CashMovement(
+            direction = "OUT",
+            amount = expense.amount,
+            currency = expense.currency,
+            reason = "مصروف: ${expense.title}",
+            createdAt = expense.createdAt
+        ))
+        return id
+    }
 
     @Query("SELECT * FROM expenses ORDER BY createdAt DESC")
     abstract fun observeExpenses(): Flow<List<Expense>>
