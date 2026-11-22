@@ -36,7 +36,8 @@ data class Sale(
     val discount: Double = 0.0,
     val total: Double,
     val paymentType: String = "CASH",
-    val customerName: String? = null
+    val customerName: String? = null,
+    val customerId: Long? = null
 )
 
 @Entity(tableName = "sale_items")
@@ -99,7 +100,9 @@ data class Purchase(
     val currency: String,
     val subtotal: Double,
     val total: Double,
-    val supplierName: String = ""
+    val supplierName: String = "",
+    val paymentType: String = "CASH",
+    val supplierId: Long? = null
 )
 
 @Entity(tableName = "purchase_items")
