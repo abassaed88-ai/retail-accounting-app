@@ -185,7 +185,7 @@ class MainActivity : AppCompatActivity() {
         card("إنشاء فاتورة شراء", "📦") { createPurchase() }
         card("المخزون وقائمة المواد", "▦") { activeTab = "المخزون"; showInventory() }
         card("سجل الفواتير السابقة", "▤") { showInvoiceHistory() }
-        card("مرتجعات المبيعات", "↩") { createSalesReturn() }
+        card("مرتجعات المبيعات", "↩") { createSalesReturn() }\n        card("مرتجعات المشتريات", "↪") { createPurchaseReturn() }
         card("عروض الأسعار وطلبات الشراء", "◆") { info("العروض والطلبات", "تظهر ضمن القوائم الفرعية.") }
     }
 
@@ -787,6 +787,55 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             dialog.show()
+        }
+    }
+
+
+    private fun createPurchaseReturn() {
+        lifecycleScope.launch {
+            try {
+                val purchases = dao.observePurchases().first()
+                if (purchases.isEmpty()) { info("مرتجع شراء", "لا توجد فواتير شراء سابقة."); return@launch }
+                val labels = purchases.map { "فاتورة #${it.id} — ${it.total} ${it.currency} — ${it.supplierName}" }
+                val picker = Spinner(this@MainActivity).apply { adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, labels) }
+                AlertDialog.Builder(this@MainActivity).setTitle("اختيار فاتورة الشراء").setView(picker)
+                    .setNegativeButton("إلغاء", null).setPositiveButton("متابعة") { _, _ ->
+                        lifecycleScope.launch {
+                            val purchase = purchases[picker.selectedItemPosition]
+                            val items = dao.getPurchaseItems(purchase.id)
+                            val box = LinearLayout(this@MainActivity).apply { orientation = LinearLayout.VERTICAL; setPadding(24, 8, 24, 0); layoutDirection = View.LAYOUT_DIRECTION_RTL }
+                            val inputs = items.map { item ->
+                                val already = dao.getReturnedPurchaseQuantity(item.id)
+                                box.addView(label("${item.productNameSnapshot} — المشتَرى: ${item.quantity} — المرتجع سابقاً: $already", 14f, ink, true))
+                                EditText(this@MainActivity).apply { hint = "الكمية المرتجعة"; inputType = 8194 }.also { box.addView(it) }
+                            }
+                            val reason = EditText(this@MainActivity).apply { hint = "سبب المرتجع (اختياري)" }; box.addView(reason)
+                            val dialog = AlertDialog.Builder(this@MainActivity).setTitle("تفاصيل مرتجع الشراء").setView(ScrollView(this@MainActivity).apply { addView(box) }).setNegativeButton("إلغاء", null).setPositiveButton("حفظ المرتجع", null).create()
+                            dialog.setOnShowListener {
+                                dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                                    val chosen = mutableListOf<Pair<PurchaseItem, Double>>()
+                                    items.forEachIndexed { i, item ->
+                                        val raw = inputs[i].text.toString().trim()
+                                        if (raw.isNotEmpty()) {
+                                            val qty = raw.toDoubleOrNull()
+                                            if (qty == null || qty <= 0.0) { inputs[i].error = "أدخل كمية صحيحة"; return@setOnClickListener }
+                                            chosen.add(item to qty)
+                                        }
+                                    }
+                                    if (chosen.isEmpty()) { info("مرتجع شراء", "أدخل كمية مرتجعة لمادة واحدة على الأقل."); return@setOnClickListener }
+                                    lifecycleScope.launch {
+                                        try {
+                                            val id = dao.savePurchaseReturn(purchase.id, chosen, reason.text.toString().trim())
+                                            dialog.dismiss()
+                                            info("تم حفظ المرتجع", "رقم المرتجع: $id\\nتم تخفيض المخزون وتحديث الصندوق أو حساب المورد.")
+                                        } catch (e: Exception) { info("تعذر حفظ المرتجع", e.message ?: "تحقق من الكميات والمخزون المتاح.") }
+                                    }
+                                }
+                            }
+                            dialog.show()
+                        }
+                    }.show()
+            } catch (e: Exception) { info("مرتجع شراء", e.message ?: "تعذر تحميل فواتير الشراء.") }
         }
     }
 
