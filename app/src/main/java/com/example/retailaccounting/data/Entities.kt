@@ -114,6 +114,18 @@ data class PurchaseItem(
     val lineTotal: Double
 )
 
+@Entity(tableName = "party_transactions")
+data class PartyTransaction(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val partyType: String,
+    val partyId: Long,
+    val action: String,
+    val amount: Double,
+    val currency: String,
+    val note: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
 data class ProfitSummary(
     val currency: String,
     val revenue: Double,
