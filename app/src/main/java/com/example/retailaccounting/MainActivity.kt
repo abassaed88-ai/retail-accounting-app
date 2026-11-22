@@ -302,12 +302,80 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showAccounts() {
-        content.removeAllViews(); section("الحسابات والصندوق")
+        content.removeAllViews(); section("الحسابات والذمم المالية")
+        card("العملاء وأرصدتهم", "♙") { showPartyList(true) }
+        card("الموردون وأرصدتهم", "♧") { showPartyList(false) }
         card("حركة الصندوق", "▣") { showCashbox() }
-        card("الديون والحسابات", "♙") { info("الحسابات", "قوائم العملاء والموردين وأرصدتهم. ربط الأرصدة بالحركات قيد الاستكمال.") }
-        card("حركة قبض أو دفع نقدية أخرى", "⇄") { createOtherCashMovement() }
+        card("حركة قبض أو دفع نقدية", "⇄") { createOtherCashMovement() }
         card("تسجيل المصاريف", "−") { createExpense() }
         card("الإيرادات الأخرى", "+") { createOtherCashMovement(defaultDirection = "IN") }
+    }
+
+    private fun showPartyList(customers: Boolean) {
+        lifecycleScope.launch {
+            try {
+                if (customers) {
+                    val entries = dao.observeCustomers().first()
+                    val lines = entries.joinToString("\\n") { "${it.name} | ${it.phone} | الرصيد: ${it.balance} ${it.currency}" }
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("قائمة العملاء")
+                        .setMessage(if (lines.isBlank()) "لا يوجد عملاء مسجلون." else lines)
+                        .setPositiveButton("إضافة عميل") { _, _ -> addParty(true) }
+                        .setNegativeButton("إغلاق", null).show()
+                } else {
+                    val entries = dao.observeSuppliers().first()
+                    val lines = entries.joinToString("\\n") { "${it.name} | ${it.phone} | الرصيد: ${it.balance} ${it.currency}" }
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("قائمة الموردين")
+                        .setMessage(if (lines.isBlank()) "لا يوجد موردون مسجلون." else lines)
+                        .setPositiveButton("إضافة مورد") { _, _ -> addParty(false) }
+                        .setNegativeButton("إغلاق", null).show()
+                }
+            } catch (e: Exception) {
+                info("الحسابات", e.message ?: "تعذر تحميل القائمة.")
+            }
+        }
+    }
+
+    private fun addParty(customer: Boolean) {
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(22, 8, 22, 0)
+            layoutDirection = View.LAYOUT_DIRECTION_RTL
+        }
+        val name = EditText(this).apply { hint = if (customer) "اسم العميل" else "اسم المورد" }
+        val phone = EditText(this).apply { hint = "رقم الهاتف (اختياري)"; inputType = 3 }
+        val balance = EditText(this).apply { hint = "الرصيد الافتتاحي (صفر إذا لا يوجد)"; inputType = 8194 }
+        val currency = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, listOf("USD", "SYP"))
+        }
+        box.addView(name); box.addView(phone); box.addView(balance); box.addView(currency)
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(if (customer) "إضافة عميل" else "إضافة مورد")
+            .setView(box).setNegativeButton("إلغاء", null).setPositiveButton("حفظ", null).create()
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val n = name.text.toString().trim()
+                val opening = balance.text.toString().toDoubleOrNull() ?: 0.0
+                if (n.isBlank()) { name.error = "الاسم مطلوب"; return@setOnClickListener }
+                if (opening < 0.0) { balance.error = "أدخل رصيداً غير سالب"; return@setOnClickListener }
+                lifecycleScope.launch {
+                    try {
+                        if (customer) dao.insertCustomer(com.example.retailaccounting.data.Customer(
+                            name = n, phone = phone.text.toString().trim(), balance = opening,
+                            currency = currency.selectedItem.toString()
+                        )) else dao.insertSupplier(com.example.retailaccounting.data.Supplier(
+                            name = n, phone = phone.text.toString().trim(), balance = opening,
+                            currency = currency.selectedItem.toString()
+                        ))
+                        dialog.dismiss()
+                        info("تم الحفظ", "تمت إضافة ${if (customer) "العميل" else "المورد"}: $n")
+                    } catch (e: Exception) {
+                        info("تعذر الحفظ", e.message ?: "حدث خطأ.")
+                    }
+                }
+            }
+        }
+        dialog.show()
     }
 
     private fun createOtherCashMovement(defaultDirection: String? = null) {
