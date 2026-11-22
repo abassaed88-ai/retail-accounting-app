@@ -29,6 +29,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var content: LinearLayout
     private var products: List<Product> = emptyList()
     private var activeTab = "الفواتير"
+    private val BACKUP_CREATE_REQUEST = 7101
+    private val BACKUP_RESTORE_REQUEST = 7102
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -743,11 +745,95 @@ class MainActivity : AppCompatActivity() {
     private fun showSettings() {
         content.removeAllViews(); section("الإعدادات")
         card("العملة وسعر الصرف", "$") { editExchangeRate() }
-        card("النسخ الاحتياطي والاستعادة", "☁") { info("النسخ الاحتياطي", "إضافة تصدير واستعادة قاعدة البيانات والتحقق من سلامتها.") }
+        card("إنشاء نسخة احتياطية", "☁") { createBackupFile() }
+        card("استعادة نسخة احتياطية", "↻") { chooseBackupFile() }
         card("حول التطبيق", "ⓘ") { info("Good Girl", "تطبيق محاسبة وإدارة مخزون للمحل.") }
     }
 
 
+
+
+    private fun createBackupFile() {
+        val intent = android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "application/octet-stream"
+            putExtra(android.content.Intent.EXTRA_TITLE, "GoodGirl-Backup-${java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date())}.db")
+        }
+        startActivityForResult(intent, BACKUP_CREATE_REQUEST)
+    }
+
+    private fun chooseBackupFile() {
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+        }
+        startActivityForResult(intent, BACKUP_RESTORE_REQUEST)
+    }
+
+    @Deprecated("Deprecated in Android API; retained for broad device compatibility")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (resultCode != RESULT_OK) return
+        val uri = data?.data ?: return
+        if (requestCode == BACKUP_CREATE_REQUEST) {
+            lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                try {
+                    val database = AppDatabase.getInstance(this@MainActivity)
+                    database.openHelper.writableDatabase.query("PRAGMA wal_checkpoint(FULL)").use { }
+                    val source = getDatabasePath("retail_accounting.db")
+                    contentResolver.openOutputStream(uri, "w")?.use { output ->
+                        source.inputStream().use { input -> input.copyTo(output) }
+                    } ?: error("تعذر فتح ملف النسخة الاحتياطية")
+                    runOnUiThread { info("اكتملت النسخة الاحتياطية", "تم تصدير قاعدة البيانات إلى الموقع الذي اخترته.") }
+                } catch (e: Exception) {
+                    runOnUiThread { info("فشل النسخ الاحتياطي", e.message ?: "تعذر إنشاء النسخة.") }
+                }
+            }
+        } else if (requestCode == BACKUP_RESTORE_REQUEST) {
+            AlertDialog.Builder(this).setTitle("تأكيد الاستعادة")
+                .setMessage("سيتم استبدال بيانات التطبيق الحالية بمحتويات النسخة المختارة. يُفضّل إنشاء نسخة احتياطية حالية أولاً.")
+                .setNegativeButton("إلغاء", null)
+                .setPositiveButton("استعادة") { _, _ -> restoreBackup(uri) }.show()
+        }
+    }
+
+    private fun restoreBackup(uri: android.net.Uri) {
+        lifecycleScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val temp = java.io.File(cacheDir, "restore-check.db")
+            try {
+                contentResolver.openInputStream(uri)?.use { input -> temp.outputStream().use { output -> input.copyTo(output) } }
+                    ?: error("تعذر قراءة ملف النسخة")
+                require(temp.length() > 0L) { "ملف النسخة فارغ" }
+                val checkDb = android.database.sqlite.SQLiteDatabase.openDatabase(temp.absolutePath, null, android.database.sqlite.SQLiteDatabase.OPEN_READONLY)
+                try {
+                    checkDb.rawQuery("PRAGMA integrity_check", null).use { cursor ->
+                        require(cursor.moveToFirst() && cursor.getString(0) == "ok") { "قاعدة البيانات داخل الملف غير سليمة" }
+                    }
+                    checkDb.rawQuery("SELECT name FROM sqlite_master WHERE type='table' AND name='products'", null).use { cursor ->
+                        require(cursor.moveToFirst()) { "الملف لا يبدو نسخة من تطبيق Good Girl" }
+                    }
+                } finally { checkDb.close() }
+                AppDatabase.closeInstance()
+                val target = getDatabasePath("retail_accounting.db")
+                temp.copyTo(target, overwrite = true)
+                val reopened = AppDatabase.getInstance(this@MainActivity)
+                reopened.openHelper.writableDatabase
+                dao = reopened.storeDao()
+                runOnUiThread {
+                    buildShell()
+                    lifecycleScope.launch {
+                        dao.observeProducts().collectLatest {
+                            products = it
+                            if (activeTab == "المخزون") showInventory()
+                        }
+                    }
+                    info("تمت الاستعادة", "تم التحقق من سلامة قاعدة البيانات واستعادة النسخة بنجاح.")
+                }
+            } catch (e: Exception) {
+                runOnUiThread { info("تعذرت الاستعادة", e.message ?: "ملف النسخة غير صالح.") }
+            } finally { temp.delete() }
+        }
+    }
 
     private fun editExchangeRate() {
         lifecycleScope.launch {
